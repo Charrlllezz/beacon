@@ -1,28 +1,39 @@
 {
   "expo": {
-    "name": "beacon",
+    "name": "Beacon",
     "slug": "beacon",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#05050a"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.beacon.festival",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "Beacon uses Bluetooth to connect to your mesh device and communicate with your crew.",
+        "NSBluetoothPeripheralUsageDescription": "Beacon uses Bluetooth to connect to your mesh device.",
+        "NSLocationWhenInUseUsageDescription": "Beacon uses your location to share your position with your crew on the festival map.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Beacon uses your location in the background to keep your crew updated on your position.",
+        "UIBackgroundModes": ["bluetooth-central", "location"]
+      }
     },
-    "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
-      },
-      "predictiveBackGestureEnabled": false
-    },
+    "plugins": [
+      ["react-native-ble-plx", {
+        "isBackgroundEnabled": true,
+        "modes": ["peripheral", "central"],
+        "bluetoothAlwaysPermission": "Beacon uses Bluetooth to connect to your mesh device."
+      }],
+      ["expo-location", {
+        "locationAlwaysAndWhenInUsePermission": "Beacon uses your location to share with your crew."
+      }],
+      "expo-secure-store",
+      "expo-font"
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     }
