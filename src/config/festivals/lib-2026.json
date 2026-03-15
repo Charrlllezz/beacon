@@ -1,0 +1,283 @@
+{
+  "$schema": "beacon-festival-v1",
+  "festival": {
+    "id": "lib-2026",
+    "name": "Lightning in a Bottle 2026",
+    "shortName": "LiB 2026",
+    "dates": {
+      "start": "2026-05-20T00:00:00-07:00",
+      "end": "2026-05-25T00:00:00-07:00"
+    },
+    "timezone": "America/Los_Angeles"
+  },
+  "venue": {
+    "center": {
+      "lat": 35.229953,
+      "lng": -119.266454
+    },
+    "bounds": {
+      "ne": {
+        "lat": 35.234887,
+        "lng": -119.251275
+      },
+      "sw": {
+        "lat": 35.225018,
+        "lng": -119.281632
+      }
+    },
+    "mapOverlay": {
+      "image": "https://images.squarespace-cdn.com/content/6585f5f536cfa03572c41a58/e2f1aae1-b7a5-49fb-af71-2f06ee1f089a/LiB2025+Map.png",
+      "anchors": {
+        "topLeft": {
+          "lat": 35.234887,
+          "lng": -119.281632
+        },
+        "bottomRight": {
+          "lat": 35.225018,
+          "lng": -119.251275
+        }
+      }
+    }
+  },
+  "stages": [
+    {
+      "id": "lightning",
+      "name": "Lightning Stage",
+      "shortName": "Lightning",
+      "color": "#ff6b35",
+      "emoji": "⚡",
+      "location": {
+        "lat": 35.231192,
+        "lng": -119.266366
+      },
+      "schedule": [
+        {
+          "artistId": "bicep",
+          "artistName": "Bicep (Live)",
+          "start": "2026-05-22T22:00:00-07:00",
+          "end": "2026-05-23T00:00:00-07:00"
+        },
+        {
+          "artistId": "barry-cant-swim",
+          "artistName": "Barry Can't Swim",
+          "start": "2026-05-22T20:00:00-07:00",
+          "end": "2026-05-22T21:30:00-07:00"
+        },
+        {
+          "artistId": "four-tet",
+          "artistName": "Four Tet",
+          "start": "2026-05-23T22:00:00-07:00",
+          "end": "2026-05-24T00:00:00-07:00"
+        },
+        {
+          "artistId": "caribou",
+          "artistName": "Caribou",
+          "start": "2026-05-23T20:00:00-07:00",
+          "end": "2026-05-23T21:30:00-07:00"
+        },
+        {
+          "artistId": "floating-points",
+          "artistName": "Floating Points",
+          "start": "2026-05-24T22:00:00-07:00",
+          "end": "2026-05-25T00:00:00-07:00"
+        }
+      ]
+    },
+    {
+      "id": "thunder",
+      "name": "Thunder Stage",
+      "shortName": "Thunder",
+      "color": "#2196f3",
+      "emoji": "⛈️",
+      "location": {
+        "lat": 35.230686,
+        "lng": -119.262123
+      },
+      "schedule": [
+        {
+          "artistId": "tame-impala",
+          "artistName": "Tame Impala",
+          "start": "2026-05-22T21:00:00-07:00",
+          "end": "2026-05-22T23:00:00-07:00"
+        },
+        {
+          "artistId": "bonobo",
+          "artistName": "Bonobo (Live)",
+          "start": "2026-05-22T19:00:00-07:00",
+          "end": "2026-05-22T20:30:00-07:00"
+        },
+        {
+          "artistId": "jon-hopkins",
+          "artistName": "Jon Hopkins",
+          "start": "2026-05-23T21:00:00-07:00",
+          "end": "2026-05-23T23:00:00-07:00"
+        },
+        {
+          "artistId": "anderson-paak",
+          "artistName": "Anderson .Paak",
+          "start": "2026-05-24T20:00:00-07:00",
+          "end": "2026-05-24T22:00:00-07:00"
+        }
+      ]
+    },
+    {
+      "id": "woogie",
+      "name": "The Woogie",
+      "shortName": "Woogie",
+      "color": "#9c27b0",
+      "emoji": "💃",
+      "location": {
+        "lat": 35.226530,
+        "lng": -119.260806
+      },
+      "schedule": [
+        {
+          "artistId": "peggy-gou",
+          "artistName": "Peggy Gou",
+          "start": "2026-05-22T23:00:00-07:00",
+          "end": "2026-05-23T01:00:00-07:00"
+        },
+        {
+          "artistId": "ma-la",
+          "artistName": "Ma La",
+          "start": "2026-05-22T21:00:00-07:00",
+          "end": "2026-05-22T22:45:00-07:00"
+        },
+        {
+          "artistId": "objekt",
+          "artistName": "Objekt",
+          "start": "2026-05-23T23:00:00-07:00",
+          "end": "2026-05-24T01:00:00-07:00"
+        },
+        {
+          "artistId": "kaytranada",
+          "artistName": "KAYTRANADA",
+          "start": "2026-05-24T21:00:00-07:00",
+          "end": "2026-05-24T23:00:00-07:00"
+        }
+      ]
+    },
+    {
+      "id": "grand-artique",
+      "name": "Grand Artique",
+      "shortName": "Artique",
+      "color": "#ff9800",
+      "emoji": "🎪",
+      "location": {
+        "lat": 35.227287,
+        "lng": -119.262883
+      },
+      "schedule": []
+    },
+    {
+      "id": "the-stacks",
+      "name": "The Stacks",
+      "shortName": "Stacks",
+      "color": "#e91e63",
+      "emoji": "📦",
+      "location": {
+        "lat": 35.226434,
+        "lng": -119.262090
+      },
+      "schedule": []
+    },
+    {
+      "id": "mixtape",
+      "name": "Mixtape",
+      "shortName": "Mixtape",
+      "color": "#00bcd4",
+      "emoji": "📼",
+      "location": {
+        "lat": 35.227828,
+        "lng": -119.263518
+      },
+      "schedule": []
+    },
+    {
+      "id": "lighthouse",
+      "name": "Lighthouse",
+      "shortName": "Lighthouse",
+      "color": "#ffeb3b",
+      "emoji": "🔦",
+      "location": {
+        "lat": 35.228287,
+        "lng": -119.262201
+      },
+      "schedule": []
+    },
+    {
+      "id": "crossroads",
+      "name": "Crossroads",
+      "shortName": "Crossroads",
+      "color": "#8bc34a",
+      "emoji": "✖️",
+      "location": {
+        "lat": 35.228923,
+        "lng": -119.262024
+      },
+      "schedule": []
+    }
+  ],
+  "pois": [
+    {
+      "id": "sunset-plaza",
+      "type": "info",
+      "name": "Sunset Plaza",
+      "location": {
+        "lat": 35.231464,
+        "lng": -119.271225
+      },
+      "icon": "🌅"
+    },
+    {
+      "id": "high-noon-plaza",
+      "type": "info",
+      "name": "High Noon Plaza",
+      "location": {
+        "lat": 35.233353,
+        "lng": -119.262979
+      },
+      "icon": "☀️"
+    },
+    {
+      "id": "roller-rink",
+      "type": "info",
+      "name": "Roller Rink",
+      "location": {
+        "lat": 35.230636,
+        "lng": -119.264533
+      },
+      "icon": "🛼"
+    },
+    {
+      "id": "yoga-sol",
+      "type": "info",
+      "name": "Yoga Sol",
+      "location": {
+        "lat": 35.231380,
+        "lng": -119.264744
+      },
+      "icon": "🧘"
+    },
+    {
+      "id": "junkyard",
+      "type": "info",
+      "name": "Junkyard",
+      "location": {
+        "lat": 35.229402,
+        "lng": -119.263130
+      },
+      "icon": "🔧"
+    },
+    {
+      "id": "kids-zone",
+      "type": "info",
+      "name": "Kids Zone",
+      "location": {
+        "lat": 35.227463,
+        "lng": -119.261831
+      },
+      "icon": "🎠"
+    }
+  ]
+}
