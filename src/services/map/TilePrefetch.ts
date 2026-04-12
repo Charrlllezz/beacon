@@ -2,11 +2,11 @@ import { Paths, File, Directory } from 'expo-file-system';
 
 const TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
-// Coachella venue bounds with small buffer
-const LAT_MIN = 33.673;
-const LAT_MAX = 33.687;
-const LNG_MIN = -116.247;
-const LNG_MAX = -116.229;
+// Coachella area: polo fields + camping + parking + downtown Indio + hotels + shuttle routes
+const LAT_MIN = 33.655;
+const LAT_MAX = 33.705;
+const LNG_MIN = -116.265;
+const LNG_MAX = -116.205;
 const ZOOM_MIN = 14;
 const ZOOM_MAX = 18;
 
