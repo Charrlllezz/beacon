@@ -1,6 +1,6 @@
 export const Colors = {
-  background: '#05050a',
-  surface: '#0c0c16',
+  background: '#06060b',
+  surface: '#0d0d18',
   surfaceElevated: '#13131f',
   primary: '#ff8c42',
   accent: '#ff6b35',
@@ -10,8 +10,9 @@ export const Colors = {
   textPrimary: '#f2f0ed',
   textSecondary: '#7a7680',
   textMuted: '#3d3a45',
+  coordinate: '#5a5470',
   border: '#1e1d2a',
-  overlay: 'rgba(5, 5, 10, 0.85)',
+  overlay: 'rgba(6, 6, 11, 0.85)',
 } as const;
 
 export const Spacing = {

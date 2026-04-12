@@ -1,4 +1,4 @@
-import festivalData from '../../config/festivals/lib-2026.json';
+import festivalData from '../../config/festivals/coachella-w2-2026.json';
 import type { FestivalConfig, Stage, ScheduleSlot, POI } from '../../types/festival';
 import { haversineDistance } from '../../utils/coordinates';
 
@@ -7,6 +7,10 @@ class FestivalConfigService {
 
   getConfig(): FestivalConfig {
     return this.config;
+  }
+
+  loadConfig(data: FestivalConfig): void {
+    this.config = data;
   }
 
   getStage(stageId: string): Stage | undefined {

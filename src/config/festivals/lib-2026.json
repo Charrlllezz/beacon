@@ -1,5 +1,5 @@
 {
-  "$schema": "beacon-festival-v1",
+  "$schema": "rndvu-festival-v1",
   "festival": {
     "id": "lib-2026",
     "name": "Lightning in a Bottle 2026",
@@ -23,19 +23,6 @@
       "sw": {
         "lat": 35.225018,
         "lng": -119.281632
-      }
-    },
-    "mapOverlay": {
-      "image": "https://images.squarespace-cdn.com/content/6585f5f536cfa03572c41a58/e2f1aae1-b7a5-49fb-af71-2f06ee1f089a/LiB2025+Map.png",
-      "anchors": {
-        "topLeft": {
-          "lat": 35.234887,
-          "lng": -119.281632
-        },
-        "bottomRight": {
-          "lat": 35.225018,
-          "lng": -119.251275
-        }
       }
     }
   },

@@ -28,6 +28,22 @@ export interface POI {
   icon: string;
 }
 
+export type TagCategory = 'stage' | 'food' | 'water' | 'restroom' | 'camp' | 'custom';
+
+export type TagScope = 'crew' | 'community';
+
+export interface TaggedPOI {
+  id: string;
+  name: string;
+  category: TagCategory;
+  scope: TagScope;
+  lat: number;
+  lng: number;
+  createdBy: string;
+  createdAt: number;
+  confirmCount: number;
+}
+
 export interface FestivalConfig {
   $schema: string;
   festival: {
@@ -42,13 +58,6 @@ export interface FestivalConfig {
     bounds: {
       ne: GpsPoint;
       sw: GpsPoint;
-    };
-    mapOverlay?: {
-      image: string;
-      anchors: {
-        topLeft: GpsPoint;
-        bottomRight: GpsPoint;
-      };
     };
   };
   stages: Stage[];

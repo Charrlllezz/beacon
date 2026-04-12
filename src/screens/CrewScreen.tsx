@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo, memo } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Modal, RefreshControl } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Modal, RefreshControl, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
@@ -8,7 +8,8 @@ import type { CrewSortMode } from '../store/useCrewStore';
 import { useScheduleStore } from '../store/useScheduleStore';
 import { useDeviceStore } from '../store/useDeviceStore';
 import { festivalConfig } from '../services/festival/FestivalConfig';
-import BeaconHeader from '../components/common/BeaconHeader';
+import RNDVUHeader from '../components/common/RNDVUHeader';
+import FirstOpenTip from '../components/common/FirstOpenTip';
 import ConnectionBar from '../components/common/ConnectionBar';
 import { timeAgo, isOnline } from '../utils/time';
 import { batteryColor, batteryLabel } from '../utils/battery';
@@ -54,7 +55,9 @@ const CrewMemberCard = memo(({ member, myLocation, onFindOnMap, watchingStatus, 
       activeOpacity={hasLocation ? 0.7 : 1}
     >
       <View style={[styles.avatar, online && styles.avatarOnline, member.color && { borderColor: member.color }]}>
-        <Text style={styles.avatarText}>{initials}</Text>
+        <Text style={member.emoji ? styles.avatarEmoji : styles.avatarText}>
+          {member.emoji ?? initials}
+        </Text>
         <View style={[styles.statusDot, { backgroundColor: online ? Colors.success : '#2a2a3a' }]} />
       </View>
 
@@ -129,6 +132,7 @@ export default function CrewScreen() {
   const navigation = useNavigation();
   const [colorPickerVisible, setColorPickerVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selfMember = myNodeNum ? crewMembers[myNodeNum] : null;
@@ -199,8 +203,11 @@ export default function CrewScreen() {
     return map;
   }, [members]);
 
-  const online = members.filter(m => isOnline(m.lastHeard));
-  const offline = members.filter(m => !isOnline(m.lastHeard));
+  const crewQuery = searchQuery.toLowerCase().trim();
+  const matchesSearch = (m: CrewMember) =>
+    !crewQuery || m.longName.toLowerCase().includes(crewQuery) || m.shortName.toLowerCase().includes(crewQuery);
+  const online = members.filter(m => isOnline(m.lastHeard) && matchesSearch(m));
+  const offline = members.filter(m => !isOnline(m.lastHeard) && matchesSearch(m));
 
   const renderMember = useCallback((member: CrewMember) => (
     <CrewMemberCard
@@ -215,11 +222,33 @@ export default function CrewScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <BeaconHeader
+      <RNDVUHeader
         title="Crew"
         subtitle={`${online.length} online`}
       />
       <ConnectionBar />
+
+      {/* Search bar */}
+      <View style={styles.searchRow}>
+        <View style={styles.searchBox}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search crew…"
+            placeholderTextColor={Colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Text style={styles.searchClear}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
@@ -327,12 +356,45 @@ export default function CrewScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <FirstOpenTip
+        storageKey="rndvu_tip_crew"
+        title="Your Crew"
+        tips={[
+          { icon: '📍', title: 'Find on Map', description: 'Tap any crew member to jump to their location on the map' },
+          { icon: '🔋', title: 'Status Info', description: "See everyone's battery level, signal strength, and distance from you" },
+          { icon: '🎨', title: 'Pick Your Color', description: 'Choose a color for your map pin so your crew can spot you easily' },
+        ]}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  searchRow: {
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.xs,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    height: 38,
+  },
+  searchIcon: { fontSize: 14, marginRight: 6 },
+  searchInput: {
+    flex: 1,
+    color: Colors.textPrimary,
+    fontSize: FontSize.sm,
+    paddingVertical: 0,
+  },
+  searchClear: { color: Colors.textMuted, fontSize: 14, paddingHorizontal: 4 },
   content: { padding: Spacing.md, paddingBottom: 32 },
   sectionLabel: {
     color: Colors.textMuted,
@@ -386,6 +448,7 @@ const styles = StyleSheet.create({
   },
   avatarOnline: { borderColor: Colors.success },
   avatarText: { color: Colors.textPrimary, fontWeight: '700', fontSize: FontSize.sm },
+  avatarEmoji: { fontSize: 22 },
   statusDot: {
     position: 'absolute',
     bottom: 0,

@@ -8,10 +8,11 @@ interface Props {
   onSendHeading: (stageId: string) => void;
   onSendRally: () => void;
   onSendSOS: () => void;
+  onSetMeetup: () => void;
   onClose: () => void;
 }
 
-export default function QuickActions({ onSendHeading, onSendRally, onSendSOS, onClose }: Props) {
+export default function QuickActions({ onSendHeading, onSendRally, onSendSOS, onSetMeetup, onClose }: Props) {
   const stages = festivalConfig.getAllStages();
 
   return (
@@ -41,12 +42,17 @@ export default function QuickActions({ onSendHeading, onSendRally, onSendSOS, on
       <View style={styles.actionRow}>
         <TouchableOpacity style={[styles.actionButton, styles.rallyButton]} onPress={onSendRally}>
           <Text style={styles.actionEmoji}>📍</Text>
-          <Text style={[styles.actionText, { color: Colors.primary }]}>Set a Rally Point</Text>
+          <Text style={[styles.actionText, { color: Colors.primary }]}>Rally Point</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.actionButton, styles.meetupButton]} onPress={() => { hapticLight(); onSetMeetup(); }}>
+          <Text style={styles.actionEmoji}>🕐</Text>
+          <Text style={[styles.actionText, { color: Colors.warning }]}>Set Meetup</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={[styles.actionButton, styles.sosButton]} onPress={() => { hapticWarning(); onSendSOS(); }}>
           <Text style={styles.actionEmoji}>🆘</Text>
-          <Text style={[styles.actionText, { color: Colors.error }]}>Request Help + Send Your Location</Text>
+          <Text style={[styles.actionText, { color: Colors.error }]}>Need Help</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -89,7 +95,8 @@ const styles = StyleSheet.create({
   },
   closeText: { color: Colors.textSecondary, fontSize: 16 },
   row: {
-    paddingHorizontal: Spacing.md,
+    paddingLeft: Spacing.sm,
+    paddingRight: Spacing.md,
     gap: 8,
     marginBottom: Spacing.sm,
   },
@@ -99,7 +106,7 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: Colors.surfaceElevated,
     borderRadius: BorderRadius.full,
-    paddingVertical: 8,
+    paddingVertical: 12,
     paddingHorizontal: 14,
     borderWidth: 1,
   },
@@ -107,8 +114,8 @@ const styles = StyleSheet.create({
   chipText: { fontSize: FontSize.sm, fontWeight: '700' },
   actionRow: {
     flexDirection: 'row',
-    paddingHorizontal: Spacing.md,
-    gap: 10,
+    paddingHorizontal: Spacing.sm,
+    gap: 8,
   },
   actionButton: {
     flex: 1,
@@ -124,11 +131,14 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary + '44',
     backgroundColor: Colors.primary + '11',
   },
+  meetupButton: {
+    borderColor: Colors.warning + '44',
+    backgroundColor: Colors.warning + '11',
+  },
   sosButton: {
     borderColor: Colors.error + '44',
     backgroundColor: Colors.error + '11',
   },
-  actionEmoji: { fontSize: 24, marginBottom: 4 },
-  actionText: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.textPrimary, textAlign: 'center' },
-  actionSubtext: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2 },
+  actionEmoji: { fontSize: 22, marginBottom: 4 },
+  actionText: { fontSize: FontSize.xs, fontWeight: '700', color: Colors.textPrimary, textAlign: 'center' },
 });

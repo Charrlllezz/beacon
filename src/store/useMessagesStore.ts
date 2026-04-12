@@ -2,8 +2,18 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Message } from '../types/messages';
 
-const STORAGE_KEY = 'beacon_messages';
+const STORAGE_KEY = 'rndvu_messages';
 const MAX_MESSAGES = 500;
+const PERSIST_DEBOUNCE_MS = 5000;
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function debouncedPersist(messages: Message[]) {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(messages)).catch(() => {});
+  }, PERSIST_DEBOUNCE_MS);
+}
 
 interface MessagesState {
   messages: Message[];
@@ -25,7 +35,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       const messages = state.messages.length >= MAX_MESSAGES
         ? [...state.messages.slice(1), message]
         : [...state.messages, message];
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(messages)).catch(() => {});
+      debouncedPersist(messages);
       return { messages };
     });
   },

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  ScrollView, View, Text, StyleSheet, TouchableOpacity, Modal, Pressable,
+  ScrollView, View, Text, StyleSheet, TouchableOpacity, Modal, Pressable, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
@@ -11,18 +11,17 @@ import { useCrewStore } from '../store/useCrewStore';
 import { useMessagesStore } from '../store/useMessagesStore';
 import { bleService } from '../services/ble/BleManager';
 import { buildGoingMessage, parseMessage } from '../services/mesh/MessageService';
-import BeaconHeader from '../components/common/BeaconHeader';
+import RNDVUHeader from '../components/common/RNDVUHeader';
+import FirstOpenTip from '../components/common/FirstOpenTip';
 import ConnectionBar from '../components/common/ConnectionBar';
 import { formatTime } from '../utils/time';
 import type { Stage, ScheduleSlot } from '../types/festival';
 
-// Festival days: Wed May 20 – Sun May 24, 2026 (UTC-7)
+// Festival days: Fri Apr 17 – Sun Apr 19, 2026 (UTC-7)
 const FESTIVAL_DAYS = [
-  { label: 'Wed', date: 20 },
-  { label: 'Thu', date: 21 },
-  { label: 'Fri', date: 22 },
-  { label: 'Sat', date: 23 },
-  { label: 'Sun', date: 24 },
+  { label: 'Fri', date: 17 },
+  { label: 'Sat', date: 18 },
+  { label: 'Sun', date: 19 },
 ];
 
 function slotMatchesDay(slot: ScheduleSlot, dayOfMonth: number): boolean {
@@ -68,12 +67,19 @@ function findConflicts(
 }
 
 export default function ScheduleScreen() {
-  const [selectedDay, setSelectedDay] = useState(2); // default Fri
+  const [selectedDay, setSelectedDay] = useState(0); // default Fri
   const [pendingPick, setPendingPick] = useState<{ stage: Stage; slot: ScheduleSlot } | null>(null);
   const [conflicts, setConflicts] = useState<ConflictInfo[]>([]);
   const [keptBothKeys, setKeptBothKeys] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [myScheduleOnly, setMyScheduleOnly] = useState(false);
+  const [activeStageId, setActiveStageId] = useState<string | null>(null);
 
   const stages = festivalConfig.getAllStages();
+
+  const toggleStageFilter = (stageId: string) => {
+    setActiveStageId(prev => prev === stageId ? null : stageId);
+  };
   const { toggleMyGoing, isMyGoing: checkMyGoing, getGoingForArtist, removeGoingEntry, myGoingPicks } = useScheduleStore();
   const { myNodeNum } = useDeviceStore();
   const crewMembers = useCrewStore(s => s.crewMembers);
@@ -130,11 +136,17 @@ export default function ScheduleScreen() {
 
   async function handleReplace() {
     if (!pendingPick) return;
+    const myId = myNodeNum ?? 0;
     // Remove all conflicting picks first
     for (const conflict of conflicts) {
       if (checkMyGoing(conflict.stageId, conflict.artistId)) {
         toggleMyGoing(conflict.stageId, conflict.artistId);
       }
+      // Also remove going entries so the party icon clears
+      removeGoingEntry(myId, conflict.stageId, conflict.artistId);
+      // Clean up kept-both tags for replaced conflicts
+      const key = `${conflict.stageId}:${conflict.artistId}`;
+      setKeptBothKeys(prev => { const next = new Set(prev); next.delete(key); return next; });
     }
     await commitGoing(pendingPick.stage, pendingPick.slot);
     setPendingPick(null);
@@ -146,10 +158,61 @@ export default function ScheduleScreen() {
     setConflicts([]);
   }
 
+  const query = searchQuery.toLowerCase().trim();
+  const now = Date.now();
+
+  const filteredStageData = useMemo(() => {
+    return stages
+      .filter(stage => !activeStageId || activeStageId === stage.id)
+      .map(stage => {
+        let slots = stage.schedule
+          .filter(s => slotMatchesDay(s, dayConfig.date))
+          .filter(s => new Date(s.end).getTime() > now)
+          .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+        if (query) {
+          slots = slots.filter(s => s.artistName.toLowerCase().includes(query));
+        }
+        if (myScheduleOnly) {
+          slots = slots.filter(s => checkMyGoing(stage.id, s.artistId));
+        }
+        return { stage, slots };
+      })
+      .filter(({ slots }) => slots.length > 0);
+  }, [stages, dayConfig.date, query, myScheduleOnly, activeStageId, myGoingPicks, now]);
+
   return (
     <SafeAreaView style={styles.container}>
-      <BeaconHeader title="Lineup" subtitle="LiB 2026" />
+      <RNDVUHeader title="Lineup" subtitle="Coachella W2" />
       <ConnectionBar />
+
+      {/* Search bar */}
+      <View style={styles.searchRow}>
+        <View style={styles.searchBox}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search artists…"
+            placeholderTextColor={Colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Text style={styles.searchClear}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <TouchableOpacity
+          style={[styles.myScheduleBtn, myScheduleOnly && styles.myScheduleBtnActive]}
+          onPress={() => setMyScheduleOnly(v => !v)}
+        >
+          <Text style={[styles.myScheduleBtnText, myScheduleOnly && styles.myScheduleBtnTextActive]}>
+            My Sets
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Day selector */}
       <View style={styles.daySelector}>
@@ -166,15 +229,36 @@ export default function ScheduleScreen() {
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      {/* Stage filter chips */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stageFilterWrap} contentContainerStyle={styles.stageFilterRow}>
         {stages.map(stage => {
-          const slots = stage.schedule
-            .filter(s => slotMatchesDay(s, dayConfig.date))
-            .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-          if (!slots.length) return null;
+          const isActive = activeStageId === stage.id;
+          return (
+            <TouchableOpacity
+              key={stage.id}
+              style={[styles.stageChip, isActive && { backgroundColor: stage.color + '33', borderColor: stage.color }]}
+              onPress={() => toggleStageFilter(stage.id)}
+            >
+              <View style={[styles.stageChipDot, { backgroundColor: stage.color }]} />
+              <Text style={[styles.stageChipText, isActive && { color: stage.color }]}>
+                {stage.shortName}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      <ScrollView contentContainerStyle={styles.content}>
+        {filteredStageData.length === 0 && (
+          <View style={styles.emptyFilter}>
+            <Text style={styles.emptyFilterText}>
+              {myScheduleOnly ? 'No sets marked "Going" for this day' : 'No matching artists'}
+            </Text>
+          </View>
+        )}
+        {filteredStageData.map(({ stage, slots }) => {
 
           const nowPlaying = festivalConfig.getNowPlaying(stage.id);
-
           return (
             <View key={stage.id} style={styles.stageCard}>
               <View style={styles.stageHeader}>
@@ -229,6 +313,16 @@ export default function ScheduleScreen() {
         })}
       </ScrollView>
 
+      <FirstOpenTip
+        storageKey="rndvu_tip_lineup"
+        title="Festival Lineup"
+        tips={[
+          { icon: '✅', title: 'Mark Your Sets', description: "Tap 'I'm Going' on sets you don't want to miss" },
+          { icon: '👥', title: 'Crew Picks', description: 'See which sets your crew is going to with the party icon' },
+          { icon: '⚠️', title: 'Conflicts', description: "We'll let you know when your picks overlap so you can decide" },
+        ]}
+      />
+
       {/* Conflict modal */}
       <Modal
         visible={pendingPick !== null}
@@ -273,6 +367,70 @@ export default function ScheduleScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  // Search & filters
+  searchRow: {
+    flexDirection: 'row',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  searchBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    height: 38,
+  },
+  searchIcon: { fontSize: 14, marginRight: 6 },
+  searchInput: {
+    flex: 1,
+    color: Colors.textPrimary,
+    fontSize: FontSize.sm,
+    paddingVertical: 0,
+  },
+  searchClear: { color: Colors.textMuted, fontSize: 14, paddingHorizontal: 4 },
+  myScheduleBtn: {
+    paddingHorizontal: 14,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    height: 38,
+  },
+  myScheduleBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  myScheduleBtnText: { color: Colors.textSecondary, fontSize: FontSize.xs, fontWeight: '700' },
+  myScheduleBtnTextActive: { color: '#fff' },
+  stageFilterWrap: {
+    height: 42,
+    marginTop: Spacing.sm,
+  },
+  stageFilterRow: {
+    paddingHorizontal: Spacing.md,
+    gap: 6,
+    alignItems: 'center',
+    height: 42,
+  },
+  stageChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    height: 34,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 5,
+  },
+  stageChipDot: { width: 8, height: 8, borderRadius: 4 },
+  stageChipText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600' },
+  emptyFilter: { alignItems: 'center', paddingTop: 60 },
+  emptyFilterText: { color: Colors.textMuted, fontSize: FontSize.sm },
   daySelector: {
     flexDirection: 'row',
     padding: Spacing.md,

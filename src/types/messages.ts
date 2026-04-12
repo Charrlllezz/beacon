@@ -1,6 +1,6 @@
 import type { GpsPoint } from './festival';
 
-export type MessageType = 'text' | 'heading' | 'rally' | 'sos' | 'going' | 'calibration' | 'color';
+export type MessageType = 'text' | 'heading' | 'rally' | 'sos' | 'going' | 'calibration' | 'color' | 'tag' | 'meetup';
 
 export interface BaseMessage {
   id: string;
@@ -49,4 +49,21 @@ export interface ColorMessage extends BaseMessage {
   color: string;
 }
 
-export type Message = TextMessage | HeadingMessage | RallyMessage | SOSMessage | GoingMessage | CalibrationMessage | ColorMessage;
+export interface TagMessage extends BaseMessage {
+  type: 'tag';
+  lat: number;
+  lng: number;
+  name: string;
+}
+
+export interface MeetupMessage extends BaseMessage {
+  type: 'meetup';
+  hour: number;
+  minute: number;
+  location: string;
+  lat?: number;
+  lng?: number;
+  note?: string;
+}
+
+export type Message = TextMessage | HeadingMessage | RallyMessage | SOSMessage | GoingMessage | CalibrationMessage | ColorMessage | TagMessage | MeetupMessage;

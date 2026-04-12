@@ -2,7 +2,7 @@ import React, { useRef, useState, useCallback } from 'react';
 import {
   View, FlatList, StyleSheet, KeyboardAvoidingView,
   Platform, Text, Alert, Modal, TouchableOpacity,
-  Image, ScrollView, Dimensions,
+  ScrollView, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BorderRadius, FontSize, Colors, Spacing } from '../config/theme';
@@ -14,7 +14,9 @@ import ChatInput from '../components/chat/ChatInput';
 import QuickActions from '../components/chat/QuickActions';
 import MessageItem from '../components/chat/MessageItem';
 import ConnectionBar from '../components/common/ConnectionBar';
-import BeaconHeader from '../components/common/BeaconHeader';
+import RNDVUHeader from '../components/common/RNDVUHeader';
+import MapPinPicker from '../components/map/MapPinPicker';
+import ScrollPicker from '../components/common/ScrollPicker';
 import { bleService } from '../services/ble/BleManager';
 import { festivalConfig } from '../services/festival/FestivalConfig';
 import type { Message } from '../types/messages';
@@ -23,28 +25,26 @@ import {
   buildSOSMessage,
   buildHeadingMessage,
   buildGoingMessage,
+  buildMeetupMessage,
   parseMessage,
 } from '../services/mesh/MessageService';
-import { gpsToMapPixel, mapPixelToGps, MAP_IMG_W, MAP_IMG_H } from '../utils/coordinates';
 import { hapticLight, hapticMedium, hapticWarning } from '../utils/haptics';
 
-const mapImage = require('../assets/lib-2026-map.png');
-
-const SCREEN_W = Dimensions.get('window').width;
-const SCREEN_H = Dimensions.get('window').height;
-const PICKER_H = SCREEN_H - 160;
-const PICKER_SCALE = PICKER_H / MAP_IMG_H;
-const PICKER_W = MAP_IMG_W * PICKER_SCALE;
-
-function gpsToPixel(lat: number, lng: number): { x: number; y: number } | null {
-  const raw = gpsToMapPixel(lat, lng);
-  if (!raw) return null;
-  return { x: raw.x * PICKER_SCALE, y: raw.y * PICKER_SCALE };
+function to12Hour(h24: number): { hour12: number; ampm: 'AM' | 'PM' } {
+  const ampm = h24 >= 12 ? 'PM' : 'AM';
+  let hour12 = h24 % 12;
+  if (hour12 === 0) hour12 = 12;
+  return { hour12, ampm };
 }
 
-function pixelToGps(x: number, y: number): { lat: number; lng: number } {
-  return mapPixelToGps(x / PICKER_SCALE, y / PICKER_SCALE);
+function to24Hour(hour12: number, ampm: 'AM' | 'PM'): number {
+  if (ampm === 'AM') return hour12 === 12 ? 0 : hour12;
+  return hour12 === 12 ? 12 : hour12 + 12;
 }
+
+const HOURS_12 = Array.from({ length: 12 }, (_, i) => String(i + 1));
+const MINUTES_5 = Array.from({ length: 12 }, (_, i) => (i * 5).toString().padStart(2, '0'));
+const AMPM = ['AM', 'PM'];
 
 export default function ChatScreen() {
   const messages = useMessagesStore(s => s.messages);
@@ -56,8 +56,19 @@ export default function ChatScreen() {
   const crewMembers = useCrewStore(s => s.crewMembers);
   const flatListRef = useRef<FlatList>(null);
   const [showQuickActions, setShowQuickActions] = useState(false);
-  const [showMapPicker, setShowMapPicker] = useState(false);
-  const [pickedLocation, setPickedLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [showMeetupPicker, setShowMeetupPicker] = useState(false);
+  const [meetupHour12, setMeetupHour12] = useState(8);
+  const [meetupAmPm, setMeetupAmPm] = useState<'AM' | 'PM'>('PM');
+  const [meetupMinute, setMeetupMinute] = useState(0);
+  const [meetupLocation, setMeetupLocation] = useState('');
+  const [meetupCustomLocation, setMeetupCustomLocation] = useState('');
+  const [meetupLocationMode, setMeetupLocationMode] = useState<'stage' | 'custom' | 'pin'>('stage');
+  const [meetupPinCoord, setMeetupPinCoord] = useState<{ lat: number; lng: number } | null>(null);
+  const [meetupNote, setMeetupNote] = useState('');
+  const [showMeetupMapPicker, setShowMeetupMapPicker] = useState(false);
+  const [showRallyPicker, setShowRallyPicker] = useState(false);
+  const [showRallyMapPicker, setShowRallyMapPicker] = useState(false);
+  const [rallyNote, setRallyNote] = useState('');
 
   const myName = myNodeNum ? (crewMembers[myNodeNum]?.longName ?? 'You') : 'You';
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,7 +79,6 @@ export default function ChatScreen() {
     }, 100);
   }, []);
 
-  // Clean up scroll timer on unmount
   React.useEffect(() => {
     return () => {
       if (scrollTimer.current) clearTimeout(scrollTimer.current);
@@ -82,7 +92,6 @@ export default function ChatScreen() {
     const msg = parseMessage(text, myId, myName, now, 0);
     addMessage({ ...msg, id: `self-${now}-${Math.random()}` });
 
-    // Handle going messages locally too
     if (msg.type === 'going') {
       useScheduleStore.getState().addGoingEntry({
         nodeId: myId,
@@ -97,6 +106,7 @@ export default function ChatScreen() {
       await bleService.sendText(text);
     } catch (e) {
       console.warn('Send failed:', e);
+      Alert.alert('Send Failed', 'Message could not be sent. Check your device connection.');
     }
     scrollToBottom();
   }, [myNodeNum, myName, addMessage]);
@@ -106,37 +116,16 @@ export default function ChatScreen() {
     setShowQuickActions(false);
   }, [sendRaw]);
 
-  const sendRally = useCallback(() => {
+  const openRallyPicker = useCallback(() => {
     setShowQuickActions(false);
-    Alert.alert('Rally Point', 'How do you want to set the location?', [
-      {
-        text: 'Use My Location',
-        onPress: async () => {
-          if (!myLocation) {
-            Alert.alert('No Location', "Your location isn't available yet. Make sure location access is enabled.");
-            return;
-          }
-          await sendRaw(buildRallyMessage(myLocation.lat, myLocation.lng, 'Meet here'));
-        },
-      },
-      {
-        text: 'Pick on Map',
-        onPress: () => {
-          setPickedLocation(null);
-          setShowMapPicker(true);
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [myLocation, sendRaw]);
+    setRallyNote('');
+    setShowRallyPicker(true);
+  }, []);
 
-  const confirmMapPick = useCallback(async () => {
-    if (!pickedLocation) return;
-    hapticLight();
-    await sendRaw(buildRallyMessage(pickedLocation.lat, pickedLocation.lng, 'Meet here'));
-    setShowMapPicker(false);
-    setPickedLocation(null);
-  }, [pickedLocation, sendRaw]);
+  const sendRallyAtLocation = useCallback(async (lat: number, lng: number, note?: string) => {
+    hapticMedium();
+    await sendRaw(buildRallyMessage(lat, lng, note || undefined));
+  }, [sendRaw]);
 
   const sendSOS = useCallback(async () => {
     if (!myLocation) {
@@ -144,19 +133,93 @@ export default function ChatScreen() {
       return;
     }
     hapticWarning();
-    await sendRaw(buildSOSMessage(myLocation.lat, myLocation.lng));
-    setShowQuickActions(false);
+    Alert.alert(
+      'Send SOS?',
+      'This will alert your entire crew with your location. Only use in a real emergency.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send SOS',
+          style: 'destructive',
+          onPress: async () => {
+            hapticWarning();
+            await sendRaw(buildSOSMessage(myLocation.lat, myLocation.lng));
+            setShowQuickActions(false);
+          },
+        },
+      ],
+    );
   }, [myLocation, sendRaw]);
+
+  const openMeetupPicker = useCallback(() => {
+    setShowQuickActions(false);
+    const stages = festivalConfig.getAllStages();
+    setMeetupLocation(stages.length > 0 ? stages[0].id : '');
+    setMeetupCustomLocation('');
+    setMeetupLocationMode('stage');
+    setMeetupPinCoord(null);
+    setMeetupHour12(8);
+    setMeetupAmPm('PM');
+    setMeetupMinute(0);
+    setMeetupNote('');
+    setShowMeetupPicker(true);
+  }, []);
+
+  const handleOpenMeetupMap = useCallback(() => {
+    setMeetupLocationMode('pin');
+    // Close meetup sheet first so the map modal can render on top
+    setShowMeetupPicker(false);
+    setTimeout(() => setShowMeetupMapPicker(true), 350);
+  }, []);
+
+  const handleMeetupMapConfirm = useCallback((coord: { latitude: number; longitude: number }) => {
+    setMeetupPinCoord({ lat: coord.latitude, lng: coord.longitude });
+    setShowMeetupMapPicker(false);
+    // Re-open the meetup sheet after map closes
+    setTimeout(() => setShowMeetupPicker(true), 350);
+    hapticLight();
+  }, []);
+
+  const handleMeetupMapCancel = useCallback(() => {
+    setShowMeetupMapPicker(false);
+    setTimeout(() => setShowMeetupPicker(true), 350);
+  }, []);
+
+  const sendMeetup = useCallback(async () => {
+    let locationStr = '';
+    let lat: number | undefined;
+    let lng: number | undefined;
+
+    if (meetupLocationMode === 'stage') {
+      if (!meetupLocation) return;
+      locationStr = meetupLocation;
+    } else if (meetupLocationMode === 'custom') {
+      if (!meetupCustomLocation.trim()) return;
+      locationStr = meetupCustomLocation.trim();
+    } else if (meetupLocationMode === 'pin') {
+      if (!meetupPinCoord) return;
+      locationStr = 'Dropped Pin';
+      lat = meetupPinCoord.lat;
+      lng = meetupPinCoord.lng;
+    }
+
+    const meetupHour24 = to24Hour(meetupHour12, meetupAmPm);
+    const wireMsg = buildMeetupMessage(meetupHour24, meetupMinute, locationStr, meetupNote || undefined, lat, lng);
+    hapticLight();
+    await sendRaw(wireMsg);
+    setShowMeetupPicker(false);
+  }, [meetupHour12, meetupAmPm, meetupMinute, meetupLocation, meetupCustomLocation, meetupLocationMode, meetupPinCoord, meetupNote, sendRaw]);
 
   const renderMessage = useCallback(({ item }: { item: Message }) => (
     <MessageItem item={item} myNodeNum={myNodeNum} />
   ), [myNodeNum]);
 
   const onlineCount = Object.values(crewMembers).filter(m => !m.isSelf).length;
+  const stages = festivalConfig.getAllStages();
 
   return (
     <SafeAreaView style={styles.container}>
-      <BeaconHeader
+      <RNDVUHeader
         title={channelName}
         subtitle={onlineCount > 0 ? `${onlineCount} crew online` : undefined}
       />
@@ -168,9 +231,14 @@ export default function ChatScreen() {
       >
         {messages.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>📡</Text>
-            <Text style={styles.emptyTitle}>Your crew is on the mesh</Text>
-            <Text style={styles.emptySubtitle}>Messages will appear here</Text>
+            <Text style={styles.emptyEmoji}>👋</Text>
+            <Text style={styles.emptyTitle}>Welcome to RNDVU!</Text>
+            <Text style={styles.welcomeBody}>
+              Thanks for being here and giving us a shot — we really appreciate it! We built RNDVU to keep your crew connected when it matters most, no cell service or Wi-Fi needed.
+            </Text>
+            <Text style={styles.welcomeBody}>
+              Tap the + button below to drop a rally point, send an SOS, set a meetup time and place, or let your crew know which stage you're heading to.
+            </Text>
           </View>
         ) : (
           <FlatList
@@ -191,8 +259,9 @@ export default function ChatScreen() {
         {showQuickActions && (
           <QuickActions
             onSendHeading={sendHeading}
-            onSendRally={sendRally}
+            onSendRally={openRallyPicker}
             onSendSOS={sendSOS}
+            onSetMeetup={openMeetupPicker}
             onClose={() => setShowQuickActions(false)}
           />
         )}
@@ -204,73 +273,191 @@ export default function ChatScreen() {
         />
       </KeyboardAvoidingView>
 
-      {/* Map pin-drop modal */}
-      <Modal visible={showMapPicker} animationType="slide" onRequestClose={() => setShowMapPicker(false)}>
-        <View style={styles.mapModal}>
-          <View style={styles.mapModalHeader}>
-            <TouchableOpacity onPress={() => setShowMapPicker(false)}>
-              <Text style={styles.mapModalCancel}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={styles.mapModalTitle}>Drop a Pin</Text>
-            <View style={{ width: 50 }} />
-          </View>
-          {!pickedLocation && (
-            <Text style={styles.mapModalHint}>Tap anywhere on the map to place your rally point</Text>
-          )}
-          <ScrollView
-            horizontal
-            maximumZoomScale={5}
-            minimumZoomScale={1}
-            bouncesZoom
-            showsHorizontalScrollIndicator={false}
-            showsVerticalScrollIndicator={false}
-            contentOffset={{ x: (PICKER_W - SCREEN_W) / 2, y: 0 }}
-          >
-            <TouchableOpacity
-              activeOpacity={1}
-              style={{ width: PICKER_W, height: PICKER_H }}
-              onPress={e => {
-                const { locationX, locationY } = e.nativeEvent;
-                const gps = pixelToGps(locationX, locationY);
-                hapticMedium();
-                setPickedLocation(gps);
-              }}
-            >
-              <Image source={mapImage} style={{ width: PICKER_W, height: PICKER_H }} />
-              {pickedLocation && (() => {
-                const pos = gpsToPixel(pickedLocation.lat, pickedLocation.lng);
-                if (!pos) return null;
-                return (
-                  <View style={[styles.rallyPin, { left: pos.x - 10, top: pos.y - 26 }]}>
-                    <View style={styles.rallyPinCircle} />
-                    <View style={styles.rallyPinTail} />
-                  </View>
-                );
-              })()}
-            </TouchableOpacity>
-          </ScrollView>
+      {/* Rally picker modal */}
+      <Modal visible={showRallyPicker} transparent animationType="slide" onRequestClose={() => setShowRallyPicker(false)}>
+        <View style={styles.meetupBackdrop}>
+          <View style={styles.meetupSheet}>
+            <View style={styles.meetupHandle} />
+            <Text style={styles.meetupTitle}>Rally Point</Text>
 
-          {pickedLocation && (
-            <View style={styles.mapConfirmCard}>
-              <Text style={styles.mapConfirmTitle}>📍 Rally point placed</Text>
-              <Text style={styles.mapConfirmCoords}>
-                {pickedLocation.lat.toFixed(5)}, {pickedLocation.lng.toFixed(5)}
-              </Text>
-              <View style={styles.mapConfirmActions}>
-                <TouchableOpacity
-                  style={styles.mapConfirmReplace}
-                  onPress={() => setPickedLocation(null)}
-                >
-                  <Text style={styles.mapConfirmReplaceText}>Place Again</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.mapConfirmSend} onPress={confirmMapPick}>
-                  <Text style={styles.mapConfirmSendText}>Send to Crew</Text>
-                </TouchableOpacity>
-              </View>
+            <Text style={styles.meetupLabel}>MESSAGE (OPTIONAL)</Text>
+            <TextInput
+              style={styles.meetupTextInput}
+              placeholder="Add a note..."
+              placeholderTextColor={Colors.textMuted}
+              value={rallyNote}
+              onChangeText={setRallyNote}
+              maxLength={50}
+              keyboardAppearance="dark"
+            />
+
+            <View style={styles.rallyActions}>
+              <TouchableOpacity style={styles.meetupCancel} onPress={() => setShowRallyPicker(false)}>
+                <Text style={styles.meetupCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.rallyBtn}
+                onPress={() => {
+                  if (!myLocation) {
+                    Alert.alert('No Location', "Your location isn't available yet.");
+                    return;
+                  }
+                  sendRallyAtLocation(myLocation.lat, myLocation.lng, rallyNote || undefined);
+                  setShowRallyPicker(false);
+                }}
+              >
+                <Text style={styles.rallyBtnText}>My Location</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.rallyPinBtn}
+                onPress={() => {
+                  setShowRallyPicker(false);
+                  setTimeout(() => setShowRallyMapPicker(true), 350);
+                }}
+              >
+                <Text style={styles.rallyPinBtnText}>Drop Pin</Text>
+              </TouchableOpacity>
             </View>
-          )}
+          </View>
         </View>
       </Modal>
+
+      {/* Rally map pin picker */}
+      <MapPinPicker
+        visible={showRallyMapPicker}
+        initialCoord={myLocation ? { latitude: myLocation.lat, longitude: myLocation.lng } : null}
+        title="Drop Rally Pin"
+        onCancel={() => setShowRallyMapPicker(false)}
+        onConfirm={(coord) => {
+          setShowRallyMapPicker(false);
+          sendRallyAtLocation(coord.latitude, coord.longitude, rallyNote || undefined);
+        }}
+      />
+
+      {/* Meetup picker modal */}
+      <Modal visible={showMeetupPicker} transparent animationType="slide" onRequestClose={() => setShowMeetupPicker(false)}>
+        <View style={styles.meetupBackdrop}>
+          <View style={styles.meetupSheet}>
+            <View style={styles.meetupHandle} />
+            <Text style={styles.meetupTitle}>Set a Meetup</Text>
+
+            <Text style={styles.meetupLabel}>TIME</Text>
+            <View style={styles.timeRow}>
+              <ScrollPicker
+                items={HOURS_12}
+                selectedIndex={meetupHour12 - 1}
+                onSelect={(i) => setMeetupHour12(i + 1)}
+                width={48}
+              />
+              <Text style={styles.timeColon}>:</Text>
+              <ScrollPicker
+                items={MINUTES_5}
+                selectedIndex={MINUTES_5.indexOf(meetupMinute.toString().padStart(2, '0'))}
+                onSelect={(i) => setMeetupMinute(i * 5)}
+                width={48}
+              />
+              <ScrollPicker
+                items={AMPM}
+                selectedIndex={meetupAmPm === 'AM' ? 0 : 1}
+                onSelect={(i) => setMeetupAmPm(i === 0 ? 'AM' : 'PM')}
+                width={54}
+              />
+            </View>
+
+            <Text style={styles.meetupLabel}>LOCATION</Text>
+            {/* Mode tabs */}
+            <View style={styles.locationModeRow}>
+              <TouchableOpacity
+                style={[styles.locationModeTab, meetupLocationMode === 'stage' && styles.locationModeTabActive]}
+                onPress={() => setMeetupLocationMode('stage')}
+              >
+                <Text style={[styles.locationModeText, meetupLocationMode === 'stage' && styles.locationModeTextActive]}>Stage</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.locationModeTab, meetupLocationMode === 'custom' && styles.locationModeTabActive]}
+                onPress={() => setMeetupLocationMode('custom')}
+              >
+                <Text style={[styles.locationModeText, meetupLocationMode === 'custom' && styles.locationModeTextActive]}>Custom</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.locationModeTab, meetupLocationMode === 'pin' && styles.locationModeTabActive]}
+                onPress={handleOpenMeetupMap}
+              >
+                <Text style={[styles.locationModeText, meetupLocationMode === 'pin' && styles.locationModeTextActive]}>Drop Pin</Text>
+              </TouchableOpacity>
+            </View>
+
+            {meetupLocationMode === 'stage' && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.locationRow}>
+                {stages.map(stage => (
+                  <TouchableOpacity
+                    key={stage.id}
+                    style={[styles.locationChip, meetupLocation === stage.id && { borderColor: stage.color, backgroundColor: stage.color + '22' }]}
+                    onPress={() => setMeetupLocation(stage.id)}
+                  >
+                    <Text style={[styles.locationChipText, meetupLocation === stage.id && { color: stage.color }]}>
+                      {stage.shortName}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
+            {meetupLocationMode === 'custom' && (
+              <TextInput
+                style={styles.meetupTextInput}
+                placeholder="e.g. Ferris wheel, Art installation..."
+                placeholderTextColor={Colors.textMuted}
+                value={meetupCustomLocation}
+                onChangeText={setMeetupCustomLocation}
+                maxLength={30}
+                keyboardAppearance="dark"
+              />
+            )}
+
+            {meetupLocationMode === 'pin' && (
+              <TouchableOpacity style={styles.pinInfo} onPress={handleOpenMeetupMap}>
+                <Text style={styles.pinEmoji}>📍</Text>
+                <Text style={styles.pinText}>
+                  {meetupPinCoord
+                    ? `Pin dropped\n${meetupPinCoord.lat.toFixed(4)}, ${meetupPinCoord.lng.toFixed(4)}`
+                    : 'Opening map...'}
+                </Text>
+                <Text style={styles.pinEditText}>Edit</Text>
+              </TouchableOpacity>
+            )}
+
+            <Text style={styles.meetupLabel}>MESSAGE (OPTIONAL)</Text>
+            <TextInput
+              style={styles.meetupTextInput}
+              placeholder="Add a message..."
+              placeholderTextColor={Colors.textMuted}
+              value={meetupNote}
+              onChangeText={setMeetupNote}
+              maxLength={40}
+              keyboardAppearance="dark"
+            />
+
+            <View style={styles.meetupActions}>
+              <TouchableOpacity style={styles.meetupCancel} onPress={() => setShowMeetupPicker(false)}>
+                <Text style={styles.meetupCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.meetupSend} onPress={sendMeetup}>
+                <Text style={styles.meetupSendText}>Send Meetup</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Meetup map pin picker */}
+      <MapPinPicker
+        visible={showMeetupMapPicker}
+        initialCoord={myLocation ? { latitude: myLocation.lat, longitude: myLocation.lng } : null}
+        title="Drop Meetup Pin"
+        onCancel={handleMeetupMapCancel}
+        onConfirm={handleMeetupMapConfirm}
+      />
     </SafeAreaView>
   );
 }
@@ -283,92 +470,171 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
   },
   emptyState: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    padding: Spacing.lg,
+    paddingTop: Spacing.xl,
   },
   emptyEmoji: { fontSize: 48, marginBottom: Spacing.md },
   emptyTitle: {
     color: Colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  emptySubtitle: { color: Colors.textSecondary, fontSize: 14 },
-  mapModal: { flex: 1, backgroundColor: Colors.background },
-  mapModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  mapModalTitle: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' },
-  mapModalCancel: { color: Colors.textSecondary, fontSize: FontSize.md },
-  mapModalHint: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.xs,
+    fontSize: 22,
+    fontWeight: '800',
+    marginBottom: Spacing.sm,
     textAlign: 'center',
-    paddingVertical: Spacing.sm,
+  },
+  welcomeBody: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: Spacing.lg,
+  },
+  // Meetup picker
+  meetupBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  meetupSheet: {
+    backgroundColor: Colors.surfaceElevated,
+    borderTopLeftRadius: BorderRadius.xl,
+    borderTopRightRadius: BorderRadius.xl,
+    padding: Spacing.lg,
+    paddingBottom: 40,
+    borderTopWidth: 1,
+    borderColor: Colors.warning + '33',
+  },
+  meetupHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.textMuted,
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
+  },
+  meetupTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    marginBottom: Spacing.md,
+  },
+  meetupLabel: {
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+    letterSpacing: 0.5,
+    marginBottom: Spacing.sm,
+    marginTop: Spacing.md,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  timeColon: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: Colors.warning,
+    marginHorizontal: 2,
+    marginBottom: 2,
+  },
+  locationModeRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: Spacing.sm,
+  },
+  locationModeTab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  locationModeTabActive: {
+    borderColor: Colors.warning,
+    backgroundColor: Colors.warning + '18',
+  },
+  locationModeText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600' },
+  locationModeTextActive: { color: Colors.warning },
+  locationRow: { gap: 8 },
+  locationChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
     backgroundColor: Colors.surface,
   },
-  rallyPin: { position: 'absolute', alignItems: 'center' },
-  rallyPinCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: Colors.primary,
-    borderWidth: 2,
-    borderColor: '#fff',
+  locationChipText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '700' },
+  meetupTextInput: {
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    color: Colors.textPrimary,
+    fontSize: FontSize.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
-  rallyPinTail: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 5,
-    borderRightWidth: 5,
-    borderTopWidth: 8,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderTopColor: Colors.primary,
-    marginTop: -2,
-  },
-  mapConfirmCard: {
-    position: 'absolute',
-    bottom: '35%',
-    left: Spacing.xl,
-    right: Spacing.xl,
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
+  pinInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    gap: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.primary + '44',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 8,
   },
-  mapConfirmTitle: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700', marginBottom: 4 },
-  mapConfirmCoords: { color: Colors.textMuted, fontSize: FontSize.xs, marginBottom: Spacing.md },
-  mapConfirmActions: { flexDirection: 'row', gap: Spacing.sm, width: '100%' },
-  mapConfirmReplace: {
+  pinEmoji: { fontSize: 24 },
+  pinText: { color: Colors.textSecondary, fontSize: FontSize.sm, flex: 1 },
+  pinEditText: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '600' },
+  rallyActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+  },
+  rallyBtn: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+  },
+  rallyBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
+  rallyPinBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  rallyPinBtnText: { color: Colors.primary, fontSize: FontSize.md, fontWeight: '700' },
+  meetupActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+  },
+  meetupCancel: {
+    flex: 1,
+    paddingVertical: 14,
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  mapConfirmReplaceText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600' },
-  mapConfirmSend: {
+  meetupCancelText: { color: Colors.textSecondary, fontSize: FontSize.md, fontWeight: '600' },
+  meetupSend: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderRadius: BorderRadius.full,
     alignItems: 'center',
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.warning,
   },
-  mapConfirmSendText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '700' },
+  meetupSendText: { color: '#000', fontSize: FontSize.md, fontWeight: '700' },
 });

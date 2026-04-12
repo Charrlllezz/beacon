@@ -1,5 +1,8 @@
 import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { MyNodeInfo } from '../types/mesh';
+
+const LAST_DEVICE_KEY = 'rndvu_last_device';
 
 export type ConnectionStatus =
   | 'disconnected'
@@ -31,6 +34,8 @@ interface DeviceState {
   clearDiscoveredDevices: () => void;
   setChannelName: (name: string) => void;
   disconnect: () => void;
+  saveLastDevice: () => void;
+  loadLastDevice: () => Promise<{ id: string; name: string } | null>;
 }
 
 export const useDeviceStore = create<DeviceState>((set) => ({
@@ -41,7 +46,7 @@ export const useDeviceStore = create<DeviceState>((set) => ({
   myNodeInfo: null,
   discoveredDevices: [],
   firmwareVersion: null,
-  channelName: 'Beacon',
+  channelName: 'RNDVU',
 
   setStatus: (status) => set({ status }),
   setConnectedDevice: (id, name) =>
@@ -64,4 +69,22 @@ export const useDeviceStore = create<DeviceState>((set) => ({
       myNodeNum: null,
       myNodeInfo: null,
     }),
+
+  saveLastDevice: () => {
+    const { connectedDeviceId, connectedDeviceName } = useDeviceStore.getState();
+    if (connectedDeviceId && connectedDeviceName) {
+      AsyncStorage.setItem(LAST_DEVICE_KEY, JSON.stringify({
+        id: connectedDeviceId,
+        name: connectedDeviceName,
+      }));
+    }
+  },
+
+  loadLastDevice: async () => {
+    try {
+      const raw = await AsyncStorage.getItem(LAST_DEVICE_KEY);
+      if (raw) return JSON.parse(raw) as { id: string; name: string };
+    } catch {}
+    return null;
+  },
 }));

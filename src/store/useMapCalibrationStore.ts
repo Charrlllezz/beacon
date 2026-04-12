@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { GpsPoint } from '../types/festival';
 
-const STORAGE_KEY = 'beacon_map_calibration';
+const STORAGE_KEY = 'rndvu_map_calibration';
 
 interface MapCalibrationAnchors {
   topLeft: GpsPoint;
