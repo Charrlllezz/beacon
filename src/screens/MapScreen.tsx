@@ -1,8 +1,9 @@
-import React, { useRef, useState, useCallback, useMemo } from 'react';
+import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, Modal, TextInput, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import MapView, { Marker, PROVIDER_DEFAULT, Region } from 'react-native-maps';
+import MapView, { Marker, UrlTile, PROVIDER_DEFAULT, Region } from 'react-native-maps';
+import { prefetchVenueTiles, isTilesPrefetched, getTilePath } from '../services/map/TilePrefetch';
 import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
 import { useCrewStore } from '../store/useCrewStore';
 import { useTagStore } from '../store/useTagStore';
@@ -66,6 +67,18 @@ export default function MapScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategories, setActiveCategories] = useState<Set<TagCategory>>(new Set());
   const [showFilters, setShowFilters] = useState(false);
+  const [tilesReady, setTilesReady] = useState(false);
+
+  // Prefetch satellite tiles for offline use
+  useEffect(() => {
+    if (isTilesPrefetched()) {
+      setTilesReady(true);
+    } else {
+      prefetchVenueTiles((done, total) => {
+        if (done === total) setTilesReady(true);
+      }).catch(() => setTilesReady(false));
+    }
+  }, []);
 
   // Use satellite view when near venue, standard otherwise
   const isNearVenue = myLocation
@@ -257,6 +270,19 @@ export default function MapScreen() {
           showsCompass={false}
           rotateEnabled={false}
         >
+          {/* Offline satellite tiles - cached for festival use */}
+          {tilesReady && (
+            <UrlTile
+              urlTemplate="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+              maximumZ={18}
+              minimumZ={14}
+              tileCachePath={getTilePath()}
+              offlineMode={isNearVenue}
+              tileSize={256}
+              zIndex={-1}
+            />
+          )}
+
           {/* Stage markers from festival config */}
           {showStages && config.stages.map(stage => {
             const now = festivalConfig.getNowPlaying(stage.id);
