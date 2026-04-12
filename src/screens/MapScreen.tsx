@@ -312,20 +312,7 @@ export default function MapScreen() {
             <TaggedPOIPin key={tag.id} poi={tag} onPress={handleSearchResult} />
           ))}
 
-          {/* Self pin (from mock/mesh location) */}
-          {myLocation && (
-            <Marker
-              coordinate={{ latitude: myLocation.lat, longitude: myLocation.lng }}
-              tracksViewChanges={false}
-            >
-              <View style={styles.selfPinContainer}>
-                <View style={styles.selfPinRing}>
-                  <View style={styles.selfPinDot} />
-                </View>
-                <Text style={styles.selfPinLabel}>You</Text>
-              </View>
-            </Marker>
-          )}
+          {/* Self location handled by showsUserLocation (native blue dot) */}
 
           {/* Crew pins */}
           {crewWithLocation.map(member => {
@@ -522,34 +509,6 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     marginTop: 1,
     overflow: 'hidden',
-  },
-  selfPinContainer: {
-    alignItems: 'center',
-  },
-  selfPinRing: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(59,130,246,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selfPinDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#3b82f6',
-    borderWidth: 2.5,
-    borderColor: '#fff',
-  },
-  selfPinLabel: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '800',
-    marginTop: 2,
-    textShadowColor: '#000',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
   },
   crewPinContainer: {
     alignItems: 'center',
