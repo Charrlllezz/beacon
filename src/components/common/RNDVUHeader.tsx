@@ -7,7 +7,7 @@ interface Props {
   subtitle?: string;
 }
 
-export default function BeaconHeader({ title, subtitle }: Props) {
+export default function RNDVUHeader({ title, subtitle }: Props) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{title}</Text>

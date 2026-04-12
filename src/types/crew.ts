@@ -8,6 +8,7 @@ export interface CrewMember {
   lng?: number;
   snr?: number;
   color?: string;
+  emoji?: string;
   isOnline: boolean;
   isSelf?: boolean;
 }

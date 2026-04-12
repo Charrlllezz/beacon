@@ -26,6 +26,8 @@ interface CrewState {
   getOnlineMembers: () => CrewMember[];
   getSortedMembers: () => CrewMember[];
   getDistanceTo: (nodeId: number) => number | null;
+  setDisplayName: (longName: string, shortName: string) => void;
+  loadDisplayName: () => Promise<{ longName: string; shortName: string } | null>;
 }
 
 export const useCrewStore = create<CrewState>((set, get) => ({
@@ -68,8 +70,8 @@ export const useCrewStore = create<CrewState>((set, get) => ({
       crewMembers: {
         ...state.crewMembers,
         [nodeId]: state.crewMembers[nodeId]
-          ? { ...state.crewMembers[nodeId], batteryLevel: level }
-          : { nodeId, batteryLevel: level, longName: 'Unknown', shortName: '???', isOnline: true },
+          ? { ...state.crewMembers[nodeId], batteryLevel: Math.min(level, 100) }
+          : { nodeId, batteryLevel: Math.min(level, 100), longName: 'Unknown', shortName: '???', isOnline: true },
       },
     })),
 
@@ -109,11 +111,11 @@ export const useCrewStore = create<CrewState>((set, get) => ({
           : state.crewMembers,
       };
     });
-    AsyncStorage.setItem('beacon_my_color', color);
+    AsyncStorage.setItem('rndvu_my_color', color);
   },
 
   loadMyColor: async () => {
-    const color = await AsyncStorage.getItem('beacon_my_color');
+    const color = await AsyncStorage.getItem('rndvu_my_color');
     if (color) set({ myColor: color });
   },
 
@@ -141,5 +143,27 @@ export const useCrewStore = create<CrewState>((set, get) => ({
     const member = crewMembers[nodeId];
     if (!myLocation || !member?.lat || !member?.lng) return null;
     return haversineDistance(myLocation.lat, myLocation.lng, member.lat, member.lng);
+  },
+
+  setDisplayName: (longName, shortName) => {
+    set((state) => {
+      const self = Object.values(state.crewMembers).find(m => m.isSelf);
+      if (!self) return state;
+      return {
+        crewMembers: {
+          ...state.crewMembers,
+          [self.nodeId]: { ...state.crewMembers[self.nodeId], longName, shortName },
+        },
+      };
+    });
+    AsyncStorage.setItem('rndvu_display_name', JSON.stringify({ longName, shortName }));
+  },
+
+  loadDisplayName: async () => {
+    try {
+      const raw = await AsyncStorage.getItem('rndvu_display_name');
+      if (raw) return JSON.parse(raw) as { longName: string; shortName: string };
+    } catch {}
+    return null;
   },
 }));

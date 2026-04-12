@@ -7,7 +7,24 @@ import { useCrewStore } from '../../store/useCrewStore';
 import { useDeviceStore } from '../../store/useDeviceStore';
 import { useScheduleStore } from '../../store/useScheduleStore';
 import { useMapCalibrationStore } from '../../store/useMapCalibrationStore';
+import { useTagStore } from '../../store/useTagStore';
 import { latLngFromI } from '../../utils/coordinates';
+
+const SEEN_PACKET_MAX = 200;
+const seenPacketIds = new Set<number>();
+const seenPacketOrder: number[] = [];
+
+function isPacketDuplicate(packetId: number | undefined): boolean {
+  if (packetId === undefined || packetId === 0) return false;
+  if (seenPacketIds.has(packetId)) return true;
+  seenPacketIds.add(packetId);
+  seenPacketOrder.push(packetId);
+  if (seenPacketOrder.length > SEEN_PACKET_MAX) {
+    const oldest = seenPacketOrder.shift()!;
+    seenPacketIds.delete(oldest);
+  }
+  return false;
+}
 
 export function routeFromRadio(fromRadio: FromRadio, myNodeNum: number | null): void {
   if (fromRadio.myInfo) {
@@ -37,16 +54,21 @@ export function routeFromRadio(fromRadio: FromRadio, myNodeNum: number | null): 
         nodeInfo.position.latitudeI,
         nodeInfo.position.longitudeI,
       );
-      if (isSelf) {
-        useCrewStore.getState().setMyLocation(lat, lng);
-      } else {
-        useCrewStore.getState().updateLocation(nodeInfo.num, lat, lng);
+      // Ignore 0,0 coordinates (no GPS fix yet)
+      if (lat !== 0 || lng !== 0) {
+        if (isSelf) {
+          useCrewStore.getState().setMyLocation(lat, lng);
+        } else {
+          useCrewStore.getState().updateLocation(nodeInfo.num, lat, lng);
+        }
       }
     }
   }
 
   if (fromRadio.packet) {
-    routePacket(fromRadio.packet, myNodeNum);
+    if (!isPacketDuplicate(fromRadio.packet.id)) {
+      routePacket(fromRadio.packet, myNodeNum);
+    }
   }
 }
 
@@ -88,16 +110,33 @@ function routePacket(packet: MeshPacket, myNodeNum: number | null): void {
       if (message.type === 'calibration') {
         useMapCalibrationStore.getState().setAnchors(message.anchors);
       }
+
+      if (message.type === 'tag') {
+        useTagStore.getState().addTag({
+          id: `tag-${packet.from}-${Date.now()}`,
+          name: message.name,
+          category: 'custom',
+          scope: message.channelIndex === 1 ? 'community' : 'crew',
+          lat: message.lat,
+          lng: message.lng,
+          createdBy: fromName,
+          createdAt: Date.now(),
+          confirmCount: 0,
+        });
+      }
       break;
     }
 
     case PortNum.POSITION_APP: {
       const pos = decodePosition(payload);
       const { lat, lng } = latLngFromI(pos.latitudeI, pos.longitudeI);
-      if (packet.from === myNodeNum) {
-        useCrewStore.getState().setMyLocation(lat, lng);
-      } else {
-        useCrewStore.getState().updateLocation(packet.from, lat, lng);
+      // Ignore 0,0 coordinates (no GPS fix yet)
+      if (lat !== 0 || lng !== 0) {
+        if (packet.from === myNodeNum) {
+          useCrewStore.getState().setMyLocation(lat, lng);
+        } else {
+          useCrewStore.getState().updateLocation(packet.from, lat, lng);
+        }
       }
       break;
     }

@@ -1,4 +1,4 @@
-import type { Message, TextMessage, HeadingMessage, RallyMessage, SOSMessage, GoingMessage, CalibrationMessage, ColorMessage } from '../../types/messages';
+import type { Message, TextMessage, HeadingMessage, RallyMessage, SOSMessage, GoingMessage, CalibrationMessage, ColorMessage, TagMessage, MeetupMessage } from '../../types/messages';
 import type { GpsPoint } from '../../types/festival';
 
 let _seq = 0;
@@ -52,7 +52,6 @@ export function parseMessage(
         return { ...base, type: 'going', stageId, artistId } as GoingMessage;
       }
       case 'C': {
-        // MF:C:{tlLat},{tlLng}:{brLat},{brLng}
         const tlPart = parts[2];
         const brPart = parts[3];
         if (!tlPart || !brPart) throw new Error('Missing anchor parts');
@@ -72,6 +71,38 @@ export function parseMessage(
         const color = parts[2];
         if (!color) throw new Error('Missing color');
         return { ...base, type: 'color', color } as ColorMessage;
+      }
+      case 'T': {
+        // MF:T:<lat>,<lng>:<name>
+        const coordPart = parts[2];
+        const name = parts.slice(3).join(':');
+        if (!coordPart || !name) throw new Error('Missing tag fields');
+        const [latStr, lngStr] = coordPart.split(',');
+        const lat = parseFloat(latStr);
+        const lng = parseFloat(lngStr);
+        if (isNaN(lat) || isNaN(lng)) throw new Error('Invalid coords');
+        return { ...base, type: 'tag', lat, lng, name } as TagMessage;
+      }
+      case 'M': {
+        // MF:M:<HH>:<MM>|<location>|<note>|<lat,lng>
+        const hourStr = parts[2];
+        const rest = parts.slice(3).join(':');
+        const pipeParts = rest.split('|');
+        const minuteStr = pipeParts[0];
+        const location = pipeParts[1];
+        const note = pipeParts[2] || undefined;
+        const coordStr = pipeParts[3];
+        const hour = parseInt(hourStr, 10);
+        const minute = parseInt(minuteStr, 10);
+        if (isNaN(hour) || isNaN(minute) || !location) throw new Error('Invalid meetup');
+        const result: any = { ...base, type: 'meetup', hour, minute, location, note };
+        if (coordStr) {
+          const [latStr, lngStr] = coordStr.split(',');
+          const lat = parseFloat(latStr);
+          const lng = parseFloat(lngStr);
+          if (!isNaN(lat) && !isNaN(lng)) { result.lat = lat; result.lng = lng; }
+        }
+        return result as MeetupMessage;
       }
       default:
         return { ...base, type: 'text', text: raw } as TextMessage;
@@ -105,4 +136,17 @@ export function buildColorMessage(color: string): string {
 export function buildCalibrationMessage(anchors: { topLeft: GpsPoint; bottomRight: GpsPoint }): string {
   const { topLeft: tl, bottomRight: br } = anchors;
   return `MF:C:${tl.lat.toFixed(6)},${tl.lng.toFixed(6)}:${br.lat.toFixed(6)},${br.lng.toFixed(6)}`;
+}
+
+export function buildTagMessage(lat: number, lng: number, name: string): string {
+  return `MF:T:${lat.toFixed(4)},${lng.toFixed(4)}:${name.substring(0, 30)}`;
+}
+
+export function buildMeetupMessage(hour: number, minute: number, location: string, note?: string, lat?: number, lng?: number): string {
+  const hh = hour.toString().padStart(2, '0');
+  const mm = minute.toString().padStart(2, '0');
+  let msg = `MF:M:${hh}:${mm}|${location}`;
+  msg += `|${note ? note.substring(0, 40) : ''}`;
+  if (lat != null && lng != null) msg += `|${lat.toFixed(4)},${lng.toFixed(4)}`;
+  return msg;
 }

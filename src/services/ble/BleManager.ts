@@ -1,5 +1,5 @@
 // Set USE_MOCK=true for development without hardware
-export const USE_MOCK = true;
+export const USE_MOCK = false;
 
-export { mockBleManager as bleService } from './MockBleManager';
-export type { PacketCallback, StatusCallback } from './MockBleManager';
+export { realBleManager as bleService } from './RealBleManager';
+export type { PacketCallback, StatusCallback } from './RealBleManager';

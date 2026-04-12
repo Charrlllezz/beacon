@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "Beacon",
-    "slug": "beacon",
+    "name": "RNDVU",
+    "slug": "rndvu",
+    "scheme": "rndvu",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -9,16 +10,16 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#05050a"
+      "backgroundColor": "#06060b"
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.beacon.festival",
+      "bundleIdentifier": "com.charlesapps.rndvu",
       "infoPlist": {
-        "NSBluetoothAlwaysUsageDescription": "Beacon uses Bluetooth to connect to your mesh device and communicate with your crew.",
-        "NSBluetoothPeripheralUsageDescription": "Beacon uses Bluetooth to connect to your mesh device.",
-        "NSLocationWhenInUseUsageDescription": "Beacon uses your location to share your position with your crew on the festival map.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Beacon uses your location in the background to keep your crew updated on your position.",
+        "NSBluetoothAlwaysUsageDescription": "RNDVU uses Bluetooth to connect to your mesh device and communicate with your crew.",
+        "NSBluetoothPeripheralUsageDescription": "RNDVU uses Bluetooth to connect to your mesh device.",
+        "NSLocationWhenInUseUsageDescription": "RNDVU uses your location to share your position with your crew on the festival map.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "RNDVU uses your location in the background to keep your crew updated on your position.",
         "UIBackgroundModes": ["bluetooth-central", "location"]
       }
     },
@@ -26,10 +27,10 @@
       ["react-native-ble-plx", {
         "isBackgroundEnabled": true,
         "modes": ["peripheral", "central"],
-        "bluetoothAlwaysPermission": "Beacon uses Bluetooth to connect to your mesh device."
+        "bluetoothAlwaysPermission": "RNDVU uses Bluetooth to connect to your mesh device."
       }],
       ["expo-location", {
-        "locationAlwaysAndWhenInUsePermission": "Beacon uses your location to share with your crew."
+        "locationAlwaysAndWhenInUsePermission": "RNDVU uses your location to share with your crew."
       }],
       "expo-secure-store",
       "expo-font"

@@ -16,5 +16,5 @@ export function batteryIcon(level?: number): string {
 
 export function batteryLabel(level?: number): string {
   if (level === undefined) return '--';
-  return `${level}%`;
+  return `${Math.min(level, 100)}%`;
 }
