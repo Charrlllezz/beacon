@@ -54,8 +54,8 @@ export function routeFromRadio(fromRadio: FromRadio, myNodeNum: number | null): 
         nodeInfo.position.latitudeI,
         nodeInfo.position.longitudeI,
       );
-      // Ignore 0,0 coordinates (no GPS fix yet)
-      if (lat !== 0 || lng !== 0) {
+      // Ignore 0,0 coordinates (no GPS fix) and invalid/NaN values
+      if ((lat !== 0 || lng !== 0) && !isNaN(lat) && !isNaN(lng)) {
         if (isSelf) {
           useCrewStore.getState().setMyLocation(lat, lng);
         } else {
@@ -130,8 +130,8 @@ function routePacket(packet: MeshPacket, myNodeNum: number | null): void {
     case PortNum.POSITION_APP: {
       const pos = decodePosition(payload);
       const { lat, lng } = latLngFromI(pos.latitudeI, pos.longitudeI);
-      // Ignore 0,0 coordinates (no GPS fix yet)
-      if (lat !== 0 || lng !== 0) {
+      // Ignore 0,0 coordinates (no GPS fix) and invalid/NaN values
+      if ((lat !== 0 || lng !== 0) && !isNaN(lat) && !isNaN(lng)) {
         if (packet.from === myNodeNum) {
           useCrewStore.getState().setMyLocation(lat, lng);
         } else {

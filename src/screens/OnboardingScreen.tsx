@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList,
-  Animated, ActivityIndicator, TextInput,
+  Animated, ActivityIndicator, TextInput, Alert,
   KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -91,23 +91,30 @@ export default function OnboardingScreen({ onComplete }: Props) {
       setStatus(status === 'connected' ? 'connected' : 'disconnected');
     });
 
-    await bleService.connect(deviceId);
-    setStatus('connected');
+    try {
+      await bleService.connect(deviceId);
+      setStatus('connected');
 
-    await new Promise(r => setTimeout(r, 2200));
+      await new Promise(r => setTimeout(r, 2200));
 
-    // Re-apply display name over the device's default name
-    if (displayName.trim()) {
-      const short = shortName.trim() || displayName.trim().slice(0, 4);
-      useCrewStore.getState().setDisplayName(displayName.trim(), short);
+      // Re-apply display name over the device's default name
+      if (displayName.trim()) {
+        const short = shortName.trim() || displayName.trim().slice(0, 4);
+        useCrewStore.getState().setDisplayName(displayName.trim(), short);
+      }
+
+      // Save device for auto-reconnect
+      useDeviceStore.getState().saveLastDevice();
+
+      const finalCount = Object.values(useCrewStore.getState().crewMembers).filter(m => !m.isSelf).length;
+      setCrewCount(finalCount);
+      setStep('done');
+    } catch (e) {
+      console.warn('Connection failed:', e);
+      setStatus('disconnected');
+      setStep('select');
+      Alert.alert('Connection Failed', 'Could not connect to device. Make sure it is powered on and nearby, then try again.');
     }
-
-    // Save device for auto-reconnect
-    useDeviceStore.getState().saveLastDevice();
-
-    const finalCount = Object.values(useCrewStore.getState().crewMembers).filter(m => !m.isSelf).length;
-    setCrewCount(finalCount);
-    setStep('done');
   }
 
   return (
@@ -215,6 +222,14 @@ export default function OnboardingScreen({ onComplete }: Props) {
                 </TouchableOpacity>
               )}
             />
+            <View style={styles.selectActions}>
+              <TouchableOpacity style={styles.secondaryButton} onPress={handleScan}>
+                <Text style={styles.secondaryButtonText}>Scan Again</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => setStep('name')}>
+                <Text style={styles.secondaryButtonText}>Back</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -366,5 +381,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     marginBottom: Spacing.xs,
+  },
+  selectActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+  },
+  secondaryButton: {
+    flex: 1,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    color: Colors.textSecondary,
+    fontSize: FontSize.sm,
+    fontWeight: '600',
   },
 });

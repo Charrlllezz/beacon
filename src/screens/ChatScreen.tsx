@@ -69,6 +69,7 @@ export default function ChatScreen() {
   const [showRallyPicker, setShowRallyPicker] = useState(false);
   const [showRallyMapPicker, setShowRallyMapPicker] = useState(false);
   const [rallyNote, setRallyNote] = useState('');
+  const [sending, setSending] = useState(false);
 
   const myName = myNodeNum ? (crewMembers[myNodeNum]?.longName ?? 'You') : 'You';
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -86,7 +87,8 @@ export default function ChatScreen() {
   }, []);
 
   const sendRaw = useCallback(async (text: string) => {
-    if (!text.trim()) return;
+    if (!text.trim() || sending) return;
+    setSending(true);
     const now = Date.now();
     const myId = myNodeNum ?? 0;
     const msg = parseMessage(text, myId, myName, now, 0);
@@ -107,9 +109,11 @@ export default function ChatScreen() {
     } catch (e) {
       console.warn('Send failed:', e);
       Alert.alert('Send Failed', 'Message could not be sent. Check your device connection.');
+    } finally {
+      setSending(false);
     }
     scrollToBottom();
-  }, [myNodeNum, myName, addMessage]);
+  }, [myNodeNum, myName, addMessage, sending]);
 
   const sendHeading = useCallback(async (stageId: string) => {
     await sendRaw(buildHeadingMessage(stageId));

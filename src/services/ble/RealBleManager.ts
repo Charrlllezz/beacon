@@ -220,10 +220,11 @@ export class RealBleManager {
   }
 
   private async drainFromRadio(): Promise<void> {
-    // Keep reading until we get an empty response
+    // Keep reading until we get an empty response, with a 3s timeout
     let hasMore = true;
     let reads = 0;
-    while (hasMore && reads < 100) {
+    const startTime = Date.now();
+    while (hasMore && reads < 100 && Date.now() - startTime < 3000) {
       hasMore = await this.readFromRadio();
       reads++;
       if (hasMore) {

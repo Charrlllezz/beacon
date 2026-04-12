@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useMemo } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, Modal, TextInput, ScrollView } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, Modal, TextInput, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import MapView, { Marker, PROVIDER_DEFAULT, Region } from 'react-native-maps';
@@ -126,11 +126,15 @@ export default function MapScreen() {
     setTimeout(() => setFocusNode(null), 600);
   }, [focusNodeId]);
 
-  // Smart zoom on tab focus
+  // Smart zoom on tab focus (only auto-fits once per tab visit, not on every location update)
+  const hasFittedRef = useRef(false);
   useFocusEffect(
     useCallback(() => {
       // Skip if focusNodeId is active — the effect above handles that
       if (focusNodeId) return;
+
+      // Reset fitted flag when tab is focused so we fit once per visit
+      hasFittedRef.current = false;
 
       const coords: { latitude: number; longitude: number }[] = [];
 
@@ -148,6 +152,9 @@ export default function MapScreen() {
 
       // Small delay to ensure map is mounted after tab transition
       const timer = setTimeout(() => {
+        if (hasFittedRef.current) return;
+        hasFittedRef.current = true;
+
         if (coords.length >= 2) {
           // Crew + self: fit all pins with padding
           mapRef.current?.fitToCoordinates(coords, {
@@ -174,7 +181,7 @@ export default function MapScreen() {
       }, 300);
 
       return () => clearTimeout(timer);
-    }, [focusNodeId, crewMembers, myLocation])
+    }, [focusNodeId])
   );
 
   const handleLongPress = useCallback((e: any) => {
@@ -219,7 +226,10 @@ export default function MapScreen() {
 
     try {
       await bleService.sendText(wireMsg, channelIndex);
-    } catch {}
+    } catch (e) {
+      console.warn('Tag send failed:', e);
+      Alert.alert('Tag Failed', 'Tag was saved locally but could not be broadcast to your crew.');
+    }
 
     setTagCoord(null);
   }, [tagCoord, myNodeNum, crewMembers, addTag, addMessage]);
