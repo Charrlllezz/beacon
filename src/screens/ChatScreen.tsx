@@ -70,6 +70,14 @@ export default function ChatScreen() {
   const [showRallyMapPicker, setShowRallyMapPicker] = useState(false);
   const [rallyNote, setRallyNote] = useState('');
   const [sending, setSending] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2000);
+  }, []);
 
   const myName = myNodeNum ? (crewMembers[myNodeNum]?.longName ?? 'You') : 'You';
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,6 +91,7 @@ export default function ChatScreen() {
   React.useEffect(() => {
     return () => {
       if (scrollTimer.current) clearTimeout(scrollTimer.current);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
     };
   }, []);
 
@@ -118,7 +127,9 @@ export default function ChatScreen() {
   const sendHeading = useCallback(async (stageId: string) => {
     await sendRaw(buildHeadingMessage(stageId));
     setShowQuickActions(false);
-  }, [sendRaw]);
+    const stage = festivalConfig.getStage(stageId);
+    showToast(`Heading to ${stage?.shortName ?? stageId} sent`);
+  }, [sendRaw, showToast]);
 
   const openRallyPicker = useCallback(() => {
     setShowQuickActions(false);
@@ -129,7 +140,8 @@ export default function ChatScreen() {
   const sendRallyAtLocation = useCallback(async (lat: number, lng: number, note?: string) => {
     hapticMedium();
     await sendRaw(buildRallyMessage(lat, lng, note || undefined));
-  }, [sendRaw]);
+    showToast('Rally point sent');
+  }, [sendRaw, showToast]);
 
   const sendSOS = useCallback(async () => {
     if (!myLocation) {
@@ -228,6 +240,11 @@ export default function ChatScreen() {
         subtitle={onlineCount > 0 ? `${onlineCount} crew online` : undefined}
       />
       <ConnectionBar />
+      {toast && (
+        <View style={styles.toast}>
+          <Text style={styles.toastText}>{toast}</Text>
+        </View>
+      )}
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -469,6 +486,18 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   flex: { flex: 1 },
+  toast: {
+    backgroundColor: Colors.success + '22',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.success + '44',
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  toastText: {
+    color: Colors.success,
+    fontSize: FontSize.xs,
+    fontWeight: '700',
+  },
   messageList: {
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.md,

@@ -51,7 +51,13 @@ export default function ConnectionBar() {
 
   return (
     <TouchableOpacity
-      style={[styles.bar, { backgroundColor: color + '22', borderBottomColor: color + '44' }]}
+      style={[
+        styles.bar,
+        {
+          backgroundColor: color + (status === 'disconnected' ? '44' : '22'),
+          borderBottomColor: color + (status === 'disconnected' ? '88' : '44'),
+        },
+      ]}
       onPress={status === 'disconnected' ? handleReconnect : undefined}
       activeOpacity={status === 'disconnected' ? 0.7 : 1}
     >
@@ -69,7 +75,7 @@ export default function ConnectionBar() {
 const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
-    paddingVertical: 6,
+    paddingVertical: 10,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     alignItems: 'center',

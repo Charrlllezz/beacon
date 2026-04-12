@@ -18,8 +18,8 @@ const CONFIG_ID = 42;
 export class RealBleManager {
   private manager: BleManager;
   private device: Device | null = null;
-  private packetCallback: PacketCallback | null = null;
-  private statusCallback: StatusCallback | null = null;
+  private packetCallbacks = new Set<PacketCallback>();
+  private statusCallbacks = new Set<StatusCallback>();
   private notifySub: Subscription | null = null;
   private disconnectSub: Subscription | null = null;
   private isConnected = false;
@@ -34,13 +34,21 @@ export class RealBleManager {
   }
 
   onPacket(cb: PacketCallback): () => void {
-    this.packetCallback = cb;
-    return () => { if (this.packetCallback === cb) this.packetCallback = null; };
+    this.packetCallbacks.add(cb);
+    return () => { this.packetCallbacks.delete(cb); };
   }
 
   onStatus(cb: StatusCallback): () => void {
-    this.statusCallback = cb;
-    return () => { if (this.statusCallback === cb) this.statusCallback = null; };
+    this.statusCallbacks.add(cb);
+    return () => { this.statusCallbacks.delete(cb); };
+  }
+
+  private emitPacket(fromRadio: FromRadio): void {
+    this.packetCallbacks.forEach(cb => cb(fromRadio));
+  }
+
+  private emitStatus(status: 'connected' | 'disconnected'): void {
+    this.statusCallbacks.forEach(cb => cb(status));
   }
 
   async scanAndConnect(): Promise<{ id: string; name: string }[]> {
@@ -81,7 +89,7 @@ export class RealBleManager {
 
   async connect(deviceId: string): Promise<void> {
     try {
-      this.statusCallback?.('disconnected');
+      this.emitStatus('disconnected');
 
       // Connect to device
       const device = await this.manager.connectToDevice(deviceId, {
@@ -98,7 +106,7 @@ export class RealBleManager {
       this.reconnectAttempts = 0;
       this.disconnectSub = this.manager.onDeviceDisconnected(deviceId, () => {
         this.isConnected = false;
-        this.statusCallback?.('disconnected');
+        this.emitStatus('disconnected');
         this.stopPolling();
         this.attemptReconnect();
       });
@@ -123,7 +131,7 @@ export class RealBleManager {
       );
 
       this.isConnected = true;
-      this.statusCallback?.('connected');
+      this.emitStatus('connected');
 
       // Start polling fromRadio to drain initial config
       await this.drainFromRadio();
@@ -134,7 +142,7 @@ export class RealBleManager {
     } catch (error) {
       console.error('BLE connect error:', error);
       this.isConnected = false;
-      this.statusCallback?.('disconnected');
+      this.emitStatus('disconnected');
       throw error;
     }
   }
@@ -168,7 +176,7 @@ export class RealBleManager {
 
     this.isConnected = false;
     this.lastDeviceId = null;
-    this.statusCallback?.('disconnected');
+    this.emitStatus('disconnected');
   }
 
   private attemptReconnect(): void {
@@ -211,7 +219,7 @@ export class RealBleManager {
       if (bytes.length === 0) return false;
 
       const fromRadio = decodeFromRadio(bytes);
-      this.packetCallback?.(fromRadio);
+      this.emitPacket(fromRadio);
       return true;
     } catch (error) {
       console.warn('readFromRadio error:', error);

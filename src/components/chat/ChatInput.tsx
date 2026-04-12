@@ -75,14 +75,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.primary + '44',
     marginBottom: 1,
   },
   quickBtnText: {
-    color: Colors.textSecondary,
+    color: Colors.primary,
     fontSize: 22,
     lineHeight: 26,
-    fontWeight: '300',
+    fontWeight: '600',
   },
   input: {
     flex: 1,
