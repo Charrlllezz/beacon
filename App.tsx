@@ -15,6 +15,7 @@ import { useDeviceStore } from './src/store/useDeviceStore';
 import { useCrewStore } from './src/store/useCrewStore';
 import { useMapCalibrationStore } from './src/store/useMapCalibrationStore';
 import { useTagStore } from './src/store/useTagStore';
+import { useScheduleStore } from './src/store/useScheduleStore';
 import { bleService } from './src/services/ble/BleManager';
 import { routeFromRadio } from './src/services/ble/PacketRouter';
 
@@ -40,6 +41,7 @@ export default function App() {
   const loadMyColor = useCrewStore(s => s.loadMyColor);
   const loadAnchors = useMapCalibrationStore(s => s.loadAnchors);
   const loadTags = useTagStore(s => s.loadTags);
+  const loadMyGoingPicks = useScheduleStore(s => s.loadMyGoingPicks);
   const unsubRef = useRef<{ packet?: () => void; status?: () => void }>({});
 
   useEffect(() => {
@@ -47,6 +49,7 @@ export default function App() {
     loadMyColor();
     loadAnchors();
     loadTags();
+    loadMyGoingPicks();
     tryAutoReconnect();
 
     return () => {

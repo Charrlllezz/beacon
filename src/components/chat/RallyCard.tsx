@@ -1,9 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform } from 'react-native';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
 import type { RallyMessage } from '../../types/messages';
 import { timeAgo } from '../../utils/time';
-import { formatGps } from '../../utils/coordinates';
+import { haversineDistance, formatDistance } from '../../utils/coordinates';
+import { useCrewStore } from '../../store/useCrewStore';
+import { festivalConfig } from '../../services/festival/FestivalConfig';
 
 interface Props {
   message: RallyMessage;
@@ -11,6 +13,22 @@ interface Props {
 }
 
 export default function RallyCard({ message, isMine }: Props) {
+  const myLocation = useCrewStore(s => s.myLocation);
+
+  const distance = myLocation
+    ? haversineDistance(myLocation.lat, myLocation.lng, message.lat, message.lng)
+    : null;
+
+  const nearestStage = festivalConfig.getNearestStage(message.lat, message.lng);
+
+  const openInMaps = () => {
+    const url = Platform.select({
+      ios: `maps:?daddr=${message.lat},${message.lng}`,
+      default: `geo:${message.lat},${message.lng}?q=${message.lat},${message.lng}`,
+    });
+    Linking.openURL(url);
+  };
+
   return (
     <View style={[styles.row, isMine && styles.rowMine]}>
       <View style={styles.card}>
@@ -22,17 +40,22 @@ export default function RallyCard({ message, isMine }: Props) {
             {message.note && <Text style={styles.note}>{message.note}</Text>}
           </View>
         </View>
-        {/* Mini map placeholder — shows coordinates */}
-        <View style={styles.mapPreview}>
-          <Text style={styles.mapEmoji}>🗺️</Text>
-          <Text style={styles.coords}>{formatGps(message.lat, message.lng)}</Text>
-        </View>
+        <TouchableOpacity style={styles.mapPreview} onPress={openInMaps}>
+          <View style={styles.locationInfo}>
+            {nearestStage && (
+              <Text style={styles.nearStage}>Near {nearestStage.shortName}</Text>
+            )}
+            {distance !== null && (
+              <Text style={styles.distance}>{formatDistance(distance)} away</Text>
+            )}
+          </View>
+          <Text style={styles.showMap}>Open Map →</Text>
+        </TouchableOpacity>
         <Text style={styles.time}>{timeAgo(message.timestamp / 1000)}</Text>
       </View>
     </View>
   );
 }
-
 
 const styles = StyleSheet.create({
   row: { marginVertical: 4, alignItems: 'flex-start' },
@@ -63,10 +86,11 @@ const styles = StyleSheet.create({
     padding: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
     marginBottom: 8,
   },
-  mapEmoji: { fontSize: 22 },
-  coords: { fontSize: FontSize.xs, color: Colors.textSecondary, fontFamily: 'monospace' },
+  locationInfo: { flex: 1 },
+  nearStage: { fontSize: FontSize.sm, color: Colors.textPrimary, fontWeight: '600' },
+  distance: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2 },
+  showMap: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: '700' },
   time: { fontSize: FontSize.xs, color: Colors.textMuted, alignSelf: 'flex-end' },
 });

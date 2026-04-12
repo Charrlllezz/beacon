@@ -1,4 +1,7 @@
 import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const GOING_KEY = 'rndvu_my_going_picks';
 
 interface GoingEntry {
   nodeId: number;
@@ -24,6 +27,7 @@ interface ScheduleState {
   getGoingForArtist: (stageId: string, artistId: string) => GoingEntry[];
   getMyCrewAtStage: (stageId: string) => GoingEntry[];
   getActivePickForNode: (nodeId: number, nowPlayingLookup: (stageId: string, artistId: string) => boolean) => GoingEntry | null;
+  loadMyGoingPicks: () => Promise<void>;
 }
 
 export const useScheduleStore = create<ScheduleState>((set, get) => ({
@@ -53,11 +57,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const exists = state.myGoingPicks.some(
         (p) => p.stageId === stageId && p.artistId === artistId
       );
-      return {
-        myGoingPicks: exists
-          ? state.myGoingPicks.filter((p) => !(p.stageId === stageId && p.artistId === artistId))
-          : [...state.myGoingPicks, { stageId, artistId }],
-      };
+      const myGoingPicks = exists
+        ? state.myGoingPicks.filter((p) => !(p.stageId === stageId && p.artistId === artistId))
+        : [...state.myGoingPicks, { stageId, artistId }];
+      AsyncStorage.setItem(GOING_KEY, JSON.stringify(myGoingPicks)).catch(() => {});
+      return { myGoingPicks };
     }),
 
   isMyGoing: (stageId, artistId) =>
@@ -74,5 +78,14 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   getActivePickForNode: (nodeId, nowPlayingLookup) => {
     const entries = get().goingEntries.filter((e) => e.nodeId === nodeId);
     return entries.find((e) => nowPlayingLookup(e.stageId, e.artistId)) ?? null;
+  },
+
+  loadMyGoingPicks: async () => {
+    try {
+      const raw = await AsyncStorage.getItem(GOING_KEY);
+      if (raw) {
+        set({ myGoingPicks: JSON.parse(raw) });
+      }
+    } catch {}
   },
 }));

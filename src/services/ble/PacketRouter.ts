@@ -10,7 +10,7 @@ import { useMapCalibrationStore } from '../../store/useMapCalibrationStore';
 import { useTagStore } from '../../store/useTagStore';
 import { latLngFromI } from '../../utils/coordinates';
 
-const SEEN_PACKET_MAX = 200;
+const SEEN_PACKET_MAX = 1000;
 const seenPacketIds = new Set<number>();
 const seenPacketOrder: number[] = [];
 
