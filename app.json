@@ -33,7 +33,8 @@
         "locationAlwaysAndWhenInUsePermission": "RNDVU uses your location to share with your crew."
       }],
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      "expo-file-system"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
