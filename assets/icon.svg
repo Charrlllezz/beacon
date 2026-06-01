@@ -1,0 +1,16 @@
+<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" fill="#06060b"/>
+
+  <!-- Signal arcs -->
+  <path d="M512 680 Q512 680 512 680" fill="none" stroke="#ff8c42" stroke-width="8" stroke-linecap="round"/>
+  <path d="M 362 580 A 200 200 0 0 1 662 580" fill="none" stroke="#ff8c42" stroke-width="20" stroke-linecap="round" opacity="0.4"/>
+  <path d="M 302 500 A 280 280 0 0 1 722 500" fill="none" stroke="#ff8c42" stroke-width="20" stroke-linecap="round" opacity="0.6"/>
+  <path d="M 242 420 A 360 360 0 0 1 782 420" fill="none" stroke="#ff8c42" stroke-width="20" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 182 340 A 440 440 0 0 1 842 340" fill="none" stroke="#ff8c42" stroke-width="20" stroke-linecap="round" opacity="1.0"/>
+
+  <!-- Center beacon dot -->
+  <circle cx="512" cy="680" r="40" fill="#ff8c42"/>
+
+  <!-- RNDVU text -->
+  <text x="512" y="870" font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="120" fill="#ffffff" text-anchor="middle" letter-spacing="12">RNDVU</text>
+</svg>

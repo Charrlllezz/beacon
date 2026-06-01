@@ -5,11 +5,12 @@ import {
   KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
-import { useDeviceStore } from '../store/useDeviceStore';
+import { useDeviceStore, waitForMyNode } from '../store/useDeviceStore';
 import { useCrewStore } from '../store/useCrewStore';
 import { bleService } from '../services/ble/BleManager';
-import { routeFromRadio } from '../services/ble/PacketRouter';
+import { RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK } from '../services/ble/MeshtasticCodec';
 import { useMessagesStore } from '../store/useMessagesStore';
 
 interface Props {
@@ -22,7 +23,6 @@ export default function OnboardingScreen({ onComplete }: Props) {
   const [step, setStep] = useState<Step>('welcome');
   const [displayName, setDisplayName] = useState('');
   const [shortName, setShortName] = useState('');
-  const [crewCount, setCrewCount] = useState(0);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -31,7 +31,8 @@ export default function OnboardingScreen({ onComplete }: Props) {
   const clearDiscoveredDevices = useDeviceStore(s => s.clearDiscoveredDevices);
   const setStatus = useDeviceStore(s => s.setStatus);
   const setConnectedDevice = useDeviceStore(s => s.setConnectedDevice);
-  const unsubscribeRef = useRef<{ packet?: () => void; status?: () => void }>({});
+  const crewMembers = useCrewStore(s => s.crewMembers);
+  const crewCount = Object.values(crewMembers).filter(m => !m.isSelf).length;
 
   // Pre-fill saved display name if returning to onboarding
   useEffect(() => {
@@ -41,13 +42,6 @@ export default function OnboardingScreen({ onComplete }: Props) {
         setShortName(saved.shortName);
       }
     });
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      unsubscribeRef.current.packet?.();
-      unsubscribeRef.current.status?.();
-    };
   }, []);
 
   useEffect(() => {
@@ -79,42 +73,84 @@ export default function OnboardingScreen({ onComplete }: Props) {
     setStatus('connecting');
     setConnectedDevice(deviceId, deviceName);
 
-    unsubscribeRef.current.packet = bleService.onPacket((fromRadio) => {
-      const myNodeNum = useDeviceStore.getState().myNodeNum;
-      routeFromRadio(fromRadio, myNodeNum);
-      const members = useCrewStore.getState().crewMembers;
-      const count = Object.values(members).filter(m => !m.isSelf).length;
-      setCrewCount(count);
-    });
-
-    unsubscribeRef.current.status = bleService.onStatus((status) => {
-      setStatus(status === 'connected' ? 'connected' : 'disconnected');
-    });
-
     try {
       await bleService.connect(deviceId);
       setStatus('connected');
 
-      await new Promise(r => setTimeout(r, 2200));
-
-      // Re-apply display name over the device's default name
-      if (displayName.trim()) {
-        const short = shortName.trim() || displayName.trim().slice(0, 4);
-        useCrewStore.getState().setDisplayName(displayName.trim(), short);
-      }
-
-      // Save device for auto-reconnect
+      // Save device for auto-reconnect on cold launch
       useDeviceStore.getState().saveLastDevice();
 
-      const finalCount = Object.values(useCrewStore.getState().crewMembers).filter(m => !m.isSelf).length;
-      setCrewCount(finalCount);
+      // Wait on the actual signal (myNodeNum set by the config drain) before
+      // any admin write — both setOwner and setChannel require myNodeNum.
+      const nodeNum = await waitForMyNode(10000);
+      if (nodeNum === null) {
+        console.warn('waitForMyNode timed out on onboarding; skipping device admin writes');
+      } else {
+        // Apply display name (persists across reboot).
+        if (displayName.trim()) {
+          const short = shortName.trim() || displayName.trim().slice(0, 4);
+          const long = displayName.trim();
+          useCrewStore.getState().setDisplayName(long, short);
+          try {
+            await bleService.setOwner(long, short);
+          } catch (e) {
+            console.warn('setOwner on onboarding failed (non-fatal):', e);
+          }
+        }
+
+        // Provision the shared RNDVU channel + full LoRaConfig. Device reboots
+        // ~2s later; auto-reconnect in RealBleManager handles the restore, so
+        // we fire-and-forget here. ConnectionBar will show 'reconnecting'
+        // briefly after the user lands on the main app.
+        try {
+          await bleService.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK, 1);
+        } catch (e) {
+          console.warn('setChannel on onboarding failed (non-fatal):', e);
+        }
+      }
+
+      // Persist onboarding-complete flag so cold relaunches skip onboarding
+      try {
+        await AsyncStorage.setItem('rndvu_onboarding_complete', 'true');
+      } catch {}
+
       setStep('done');
-    } catch (e) {
+    } catch (e: any) {
       console.warn('Connection failed:', e);
       setStatus('disconnected');
       setStep('select');
-      Alert.alert('Connection Failed', 'Could not connect to device. Make sure it is powered on and nearby, then try again.');
+      const { title, body } = classifyConnectError(e);
+      Alert.alert(title, body);
     }
+  }
+
+  // Map common BLE error shapes to actionable messages. T-Echo holds only
+  // one BLE central at a time, so the most frequent cause of a failed
+  // connect in the wild is "the Meshtastic app is still attached."
+  function classifyConnectError(e: any): { title: string; body: string } {
+    const msg = String(e?.message ?? e ?? '').toLowerCase();
+    if (msg.includes('already connected') || msg.includes('busy')) {
+      return {
+        title: 'Device Busy',
+        body: 'Your T-Echo is connected to another app (likely the Meshtastic app). Close that app completely (swipe up in the app switcher) and try again.',
+      };
+    }
+    if (msg.includes('not found') || msg.includes('not connectable')) {
+      return {
+        title: 'Device Not Found',
+        body: "Couldn't find your T-Echo. Make sure it's powered on, close to your phone, and not attached to another app.",
+      };
+    }
+    if (msg.includes('timeout') || msg.includes('timed out')) {
+      return {
+        title: 'Connection Timed Out',
+        body: "Your T-Echo didn't respond. It may be out of range, powered off, or held by another app (like Meshtastic).",
+      };
+    }
+    return {
+      title: 'Connection Failed',
+      body: 'Could not connect to device. Make sure it is powered on, nearby, and not attached to another app, then try again.',
+    };
   }
 
   return (
@@ -236,8 +272,8 @@ export default function OnboardingScreen({ onComplete }: Props) {
         {step === 'connecting' && (
           <View style={styles.centered}>
             <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.statusText}>Joining the mesh…</Text>
-            <Text style={styles.hintText}>Setting your rendezvous</Text>
+            <Text style={styles.statusText}>Connecting to your device…</Text>
+            <Text style={styles.hintText}>Just a moment</Text>
           </View>
         )}
 

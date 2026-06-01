@@ -1,9 +1,7 @@
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useDeviceStore } from '../../store/useDeviceStore';
-import { useCrewStore } from '../../store/useCrewStore';
 import { bleService } from '../../services/ble/BleManager';
-import { routeFromRadio } from '../../services/ble/PacketRouter';
 import { Colors, FontSize } from '../../config/theme';
 
 export default function ConnectionBar() {
@@ -15,24 +13,18 @@ export default function ConnectionBar() {
     const deviceId = connectedDeviceId ?? lastDevice?.id;
     if (!deviceId) return;
 
+    // Clear any orphan native state / pending auto-reconnect timers before
+    // reconnecting, so connectToDevice doesn't race with the internal retry loop.
+    // disconnect() emits 'disconnected' via onStatus, so we set 'reconnecting'
+    // AFTER it to avoid the state being clobbered.
+    bleService.disconnect();
     useDeviceStore.getState().setStatus('reconnecting');
-
-    const unsub = bleService.onPacket((fromRadio) => {
-      const myNodeNum = useDeviceStore.getState().myNodeNum;
-      routeFromRadio(fromRadio, myNodeNum);
-    });
-
-    const unsubStatus = bleService.onStatus((s) => {
-      useDeviceStore.getState().setStatus(s === 'connected' ? 'connected' : 'disconnected');
-    });
 
     try {
       await bleService.connect(deviceId);
-      useDeviceStore.getState().setStatus('connected');
+      // connect() emits 'connected' via onStatus on success; no need to set here
     } catch {
       useDeviceStore.getState().setStatus('disconnected');
-      unsub();
-      unsubStatus();
     }
   }, [connectedDeviceId]);
 

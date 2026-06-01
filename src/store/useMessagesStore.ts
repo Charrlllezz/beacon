@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Message } from '../types/messages';
+import type { Message, SendStatus } from '../types/messages';
 
 const STORAGE_KEY = 'rndvu_messages';
 const MAX_MESSAGES = 500;
@@ -20,6 +20,7 @@ interface MessagesState {
   isLoaded: boolean;
 
   addMessage: (message: Message) => void;
+  setSendStatus: (messageId: string, status: SendStatus) => void;
   loadMessages: () => Promise<void>;
   clearMessages: () => void;
 }
@@ -36,6 +37,21 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         ? [...state.messages.slice(1), message]
         : [...state.messages, message];
       debouncedPersist(messages);
+      return { messages };
+    });
+  },
+
+  setSendStatus: (messageId, status) => {
+    set((state) => {
+      let changed = false;
+      const messages = state.messages.map(m => {
+        if (m.id === messageId) {
+          changed = true;
+          return { ...m, sendStatus: status };
+        }
+        return m;
+      });
+      if (changed) debouncedPersist(messages);
       return { messages };
     });
   },

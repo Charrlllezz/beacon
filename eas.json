@@ -15,18 +15,15 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
-      "ios": {
-        "buildNumber": "1"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "appleId": "",
-        "ascAppId": "",
-        "appleTeamId": ""
+        "appleId": "Charles.Ellenburg.iii@gmail.com",
+        "ascAppId": "6762253305",
+        "appleTeamId": "7K8KA335HS"
       }
     }
   }

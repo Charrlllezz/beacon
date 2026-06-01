@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
+import { View, TextInput, TouchableOpacity, Text, StyleSheet, Platform, Keyboard } from 'react-native';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
 import { hapticLight } from '../../utils/haptics';
 
@@ -11,6 +11,7 @@ interface Props {
 
 export default function ChatInput({ onSend, onQuickAction, disabled }: Props) {
   const [text, setText] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
 
   function handleSend() {
     const trimmed = text.trim();
@@ -20,8 +21,24 @@ export default function ChatInput({ onSend, onQuickAction, disabled }: Props) {
     setText('');
   }
 
+  function handleDismissKeyboard() {
+    hapticLight();
+    Keyboard.dismiss();
+  }
+
   return (
     <View style={styles.container}>
+      {isFocused && (
+        <TouchableOpacity
+          style={styles.dismissBtn}
+          onPress={handleDismissKeyboard}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityLabel="Hide keyboard"
+        >
+          <Text style={styles.dismissBtnText}>⌄</Text>
+        </TouchableOpacity>
+      )}
+
       <TouchableOpacity
         style={styles.quickBtn}
         onPress={onQuickAction}
@@ -43,6 +60,8 @@ export default function ChatInput({ onSend, onQuickAction, disabled }: Props) {
         onSubmitEditing={handleSend}
         editable={!disabled}
         keyboardAppearance="dark"
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
       />
 
       <TouchableOpacity
@@ -77,6 +96,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.primary + '44',
     marginBottom: 1,
+  },
+  dismissBtn: {
+    width: 36,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 1,
+  },
+  dismissBtnText: {
+    color: Colors.textSecondary,
+    fontSize: 28,
+    lineHeight: 28,
+    fontWeight: '700',
   },
   quickBtnText: {
     color: Colors.primary,

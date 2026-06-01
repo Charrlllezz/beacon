@@ -21,7 +21,10 @@ interface Props {
 export default function TagLocationSheet({ coordinate, onSubmit, onCancel }: Props) {
   const [name, setName] = useState('');
   const [category, setCategory] = useState<TagCategory>('custom');
-  const [scope, setScope] = useState<TagScope>('crew');
+  // Scope is hardcoded 'crew' until Model 2 provisions a second channel for
+  // community tags — channel 1 isn't set up yet, so the 'community' option
+  // was silently broadcasting to a disabled slot.
+  const scope: TagScope = 'crew';
 
   const canSubmit = name.trim().length > 0;
 
@@ -58,30 +61,6 @@ export default function TagLocationSheet({ coordinate, onSubmit, onCancel }: Pro
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
-
-      <Text style={styles.categoryLabel}>Share with</Text>
-      <View style={styles.scopeRow}>
-        <TouchableOpacity
-          style={[styles.scopeBtn, scope === 'crew' && styles.scopeBtnActive]}
-          onPress={() => setScope('crew')}
-        >
-          <Text style={styles.scopeIcon}>👥</Text>
-          <View style={styles.scopeTextWrap}>
-            <Text style={[styles.scopeTitle, scope === 'crew' && styles.scopeTitleActive]}>My Crew</Text>
-            <Text style={styles.scopeHint}>Only your group sees this</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.scopeBtn, scope === 'community' && styles.scopeBtnActiveCommunity]}
-          onPress={() => setScope('community')}
-        >
-          <Text style={styles.scopeIcon}>📡</Text>
-          <View style={styles.scopeTextWrap}>
-            <Text style={[styles.scopeTitle, scope === 'community' && styles.scopeTitleActiveCommunity]}>All Festivalgoers</Text>
-            <Text style={styles.scopeHint}>Shared with everyone at the festival</Text>
-          </View>
-        </TouchableOpacity>
       </View>
 
       <View style={styles.actions}>
