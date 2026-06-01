@@ -1,6 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../config/theme';
 import ChatScreen from '../screens/ChatScreen';
 import MapScreen from '../screens/MapScreen';
@@ -10,11 +11,17 @@ import CrewScreen from '../screens/CrewScreen';
 const Tab = createBottomTabNavigator();
 
 export default function TabNavigator() {
+  const insets = useSafeAreaInsets();
+  // Grow the tab bar with the device's home-indicator inset so it's never
+  // hidden under the home indicator on devices like iPhone 16 Pro Max.
+  const bottomPad = Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 10;
+  const tabBarHeight = Platform.OS === 'ios' ? 56 + bottomPad : 68;
+
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [styles.tabBar, { paddingBottom: bottomPad, height: tabBarHeight }],
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.textSecondary,
         tabBarLabelStyle: styles.tabLabel,
@@ -71,8 +78,6 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.border,
     borderTopWidth: 1,
     paddingTop: 8,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 10,
-    height: Platform.OS === 'ios' ? 88 : 68,
   },
   tabLabel: {
     fontSize: 11,

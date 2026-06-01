@@ -1,8 +1,8 @@
 import React, { useRef, useState, useCallback } from 'react';
 import {
   View, FlatList, StyleSheet, KeyboardAvoidingView,
-  Platform, Text, Alert, Modal, TouchableOpacity,
-  ScrollView, TextInput,
+  Platform, Text, Alert, Modal, TouchableOpacity, Pressable,
+  ScrollView, TextInput, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BorderRadius, FontSize, Colors, Spacing } from '../config/theme';
@@ -97,15 +97,19 @@ export default function ChatScreen() {
 
   const sendRaw = useCallback(async (text: string) => {
     if (!text.trim() || sending) return;
+    if (!myNodeNum) {
+      Alert.alert('Not Ready', 'Still connecting to your device — try again in a moment.');
+      return;
+    }
     setSending(true);
     const now = Date.now();
-    const myId = myNodeNum ?? 0;
-    const msg = parseMessage(text, myId, myName, now, 0);
-    addMessage({ ...msg, id: `self-${now}-${Math.random()}` });
+    const selfId = `self-${now}-${Math.random()}`;
+    const msg = parseMessage(text, myNodeNum, myName, now, 0);
+    addMessage({ ...msg, id: selfId, sendStatus: 'sending' });
 
     if (msg.type === 'going') {
       useScheduleStore.getState().addGoingEntry({
-        nodeId: myId,
+        nodeId: myNodeNum,
         nodeName: myName,
         stageId: msg.stageId,
         artistId: msg.artistId,
@@ -115,8 +119,10 @@ export default function ChatScreen() {
 
     try {
       await bleService.sendText(text);
+      useMessagesStore.getState().setSendStatus(selfId, 'sent');
     } catch (e) {
       console.warn('Send failed:', e);
+      useMessagesStore.getState().setSendStatus(selfId, 'failed');
       Alert.alert('Send Failed', 'Message could not be sent. Check your device connection.');
     } finally {
       setSending(false);
@@ -251,16 +257,18 @@ export default function ChatScreen() {
         keyboardVerticalOffset={0}
       >
         {messages.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>👋</Text>
-            <Text style={styles.emptyTitle}>Welcome to RNDVU!</Text>
-            <Text style={styles.welcomeBody}>
-              Thanks for being here and giving us a shot — we really appreciate it! We built RNDVU to keep your crew connected when it matters most, no cell service or Wi-Fi needed.
-            </Text>
-            <Text style={styles.welcomeBody}>
-              Tap the + button below to drop a rally point, send an SOS, set a meetup time and place, or let your crew know which stage you're heading to.
-            </Text>
-          </View>
+          <Pressable style={styles.flex} onPress={Keyboard.dismiss}>
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyEmoji}>👋</Text>
+              <Text style={styles.emptyTitle}>Welcome to RNDVU!</Text>
+              <Text style={styles.welcomeBody}>
+                Thanks for being here and giving us a shot — we really appreciate it! We built RNDVU to keep your crew connected when it matters most, no cell service or Wi-Fi needed.
+              </Text>
+              <Text style={styles.welcomeBody}>
+                Tap the + button below to drop a rally point, send an SOS, set a meetup time and place, or let your crew know which stage you're heading to.
+              </Text>
+            </View>
+          </Pressable>
         ) : (
           <FlatList
             ref={flatListRef}
@@ -274,6 +282,8 @@ export default function ChatScreen() {
             maxToRenderPerBatch={20}
             windowSize={10}
             keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+            onScrollBeginDrag={Keyboard.dismiss}
           />
         )}
 
@@ -296,51 +306,54 @@ export default function ChatScreen() {
 
       {/* Rally picker modal */}
       <Modal visible={showRallyPicker} transparent animationType="slide" onRequestClose={() => setShowRallyPicker(false)}>
-        <View style={styles.meetupBackdrop}>
-          <View style={styles.meetupSheet}>
-            <View style={styles.meetupHandle} />
-            <Text style={styles.meetupTitle}>Rally Point</Text>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={styles.meetupBackdrop} onPress={() => setShowRallyPicker(false)}>
+            <Pressable style={styles.meetupSheet} onPress={() => {}}>
+              <View style={styles.meetupHandle} />
+              <Text style={styles.meetupTitle}>Rally Point</Text>
 
-            <Text style={styles.meetupLabel}>MESSAGE (OPTIONAL)</Text>
-            <TextInput
-              style={styles.meetupTextInput}
-              placeholder="Add a note..."
-              placeholderTextColor={Colors.textMuted}
-              value={rallyNote}
-              onChangeText={setRallyNote}
-              maxLength={50}
-              keyboardAppearance="dark"
-            />
+              <Text style={styles.meetupLabel}>MESSAGE (OPTIONAL)</Text>
+              <TextInput
+                style={styles.meetupTextInput}
+                placeholder="Add a note..."
+                placeholderTextColor={Colors.textMuted}
+                value={rallyNote}
+                onChangeText={setRallyNote}
+                maxLength={50}
+                keyboardAppearance="dark"
+                autoFocus
+              />
 
-            <View style={styles.rallyActions}>
-              <TouchableOpacity style={styles.meetupCancel} onPress={() => setShowRallyPicker(false)}>
-                <Text style={styles.meetupCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.rallyBtn}
-                onPress={() => {
-                  if (!myLocation) {
-                    Alert.alert('No Location', "Your location isn't available yet.");
-                    return;
-                  }
-                  sendRallyAtLocation(myLocation.lat, myLocation.lng, rallyNote || undefined);
-                  setShowRallyPicker(false);
-                }}
-              >
-                <Text style={styles.rallyBtnText}>My Location</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.rallyPinBtn}
-                onPress={() => {
-                  setShowRallyPicker(false);
-                  setTimeout(() => setShowRallyMapPicker(true), 350);
-                }}
-              >
-                <Text style={styles.rallyPinBtnText}>Drop Pin</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+              <View style={styles.rallyActions}>
+                <TouchableOpacity style={styles.meetupCancel} onPress={() => setShowRallyPicker(false)}>
+                  <Text style={styles.meetupCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.rallyBtn}
+                  onPress={() => {
+                    if (!myLocation) {
+                      Alert.alert('No Location', "Your location isn't available yet.");
+                      return;
+                    }
+                    sendRallyAtLocation(myLocation.lat, myLocation.lng, rallyNote || undefined);
+                    setShowRallyPicker(false);
+                  }}
+                >
+                  <Text style={styles.rallyBtnText}>My Location</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.rallyPinBtn}
+                  onPress={() => {
+                    setShowRallyPicker(false);
+                    setTimeout(() => setShowRallyMapPicker(true), 350);
+                  }}
+                >
+                  <Text style={styles.rallyPinBtnText}>Drop Pin</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Rally map pin picker */}
@@ -357,8 +370,9 @@ export default function ChatScreen() {
 
       {/* Meetup picker modal */}
       <Modal visible={showMeetupPicker} transparent animationType="slide" onRequestClose={() => setShowMeetupPicker(false)}>
-        <View style={styles.meetupBackdrop}>
-          <View style={styles.meetupSheet}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={styles.meetupBackdrop} onPress={() => setShowMeetupPicker(false)}>
+            <Pressable style={styles.meetupSheet} onPress={() => {}}>
             <View style={styles.meetupHandle} />
             <Text style={styles.meetupTitle}>Set a Meetup</Text>
 
@@ -467,8 +481,9 @@ export default function ChatScreen() {
                 <Text style={styles.meetupSendText}>Send Meetup</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Meetup map pin picker */}

@@ -6,6 +6,19 @@ import { isOnline } from '../utils/time';
 
 export type CrewSortMode = 'alpha' | 'distance';
 
+const CREW_STORAGE_KEY = 'rndvu_crew_members';
+const PERSIST_DEBOUNCE_MS = 2000;
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleSave() {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    const crewMembers = useCrewStore.getState().crewMembers;
+    AsyncStorage.setItem(CREW_STORAGE_KEY, JSON.stringify(crewMembers)).catch(() => {});
+  }, PERSIST_DEBOUNCE_MS);
+}
+
 interface CrewState {
   crewMembers: Record<number, CrewMember>;
   myLocation: { lat: number; lng: number } | null;
@@ -18,9 +31,11 @@ interface CrewState {
   updateBattery: (nodeId: number, level: number) => void;
   updateColor: (nodeId: number, color: string) => void;
   updateSnr: (nodeId: number, snr: number) => void;
+  touchLastHeard: (nodeId: number, lastHeardSeconds: number) => void;
   setMyLocation: (lat: number, lng: number) => void;
   setMyColor: (color: string) => void;
   loadMyColor: () => Promise<void>;
+  loadCrewMembers: () => Promise<void>;
   setFocusNode: (nodeId: number | null) => void;
   setSortMode: (mode: CrewSortMode) => void;
   getOnlineMembers: () => CrewMember[];
@@ -47,53 +62,75 @@ export const useCrewStore = create<CrewState>((set, get) => ({
             ...existing,
             ...partial,
             nodeId: partial.nodeId,
-            longName: partial.longName ?? existing?.longName ?? 'Unknown',
-            shortName: partial.shortName ?? existing?.shortName ?? '???',
+            // Use || not ?? so empty-string name from an unconfigured T-Echo
+            // falls back to existing or 'Unknown' instead of rendering blank.
+            longName: partial.longName || existing?.longName || 'Unknown',
+            shortName: partial.shortName || existing?.shortName || '???',
             isOnline: partial.isOnline ?? isOnline(partial.lastHeard ?? existing?.lastHeard),
           },
         },
       };
     }),
 
+  // The five helpers below no-op when we don't already have a crew entry.
+  // Packet-only updates (POSITION, TELEMETRY, text dedup, etc.) must not
+  // synthesize "Unknown / ???" stubs before NodeInfo arrives, or the crew
+  // list fills with ghosts. Once upsertMember creates a real entry, these
+  // updates then apply.
   updateLocation: (nodeId, lat, lng) =>
-    set((state) => ({
-      crewMembers: {
-        ...state.crewMembers,
-        [nodeId]: state.crewMembers[nodeId]
-          ? { ...state.crewMembers[nodeId], lat, lng }
-          : { nodeId, lat, lng, longName: 'Unknown', shortName: '???', isOnline: true },
-      },
-    })),
+    set((state) => {
+      if (!state.crewMembers[nodeId]) return state;
+      return {
+        crewMembers: {
+          ...state.crewMembers,
+          [nodeId]: { ...state.crewMembers[nodeId], lat, lng },
+        },
+      };
+    }),
 
   updateBattery: (nodeId, level) =>
-    set((state) => ({
-      crewMembers: {
-        ...state.crewMembers,
-        [nodeId]: state.crewMembers[nodeId]
-          ? { ...state.crewMembers[nodeId], batteryLevel: Math.min(level, 100) }
-          : { nodeId, batteryLevel: Math.min(level, 100), longName: 'Unknown', shortName: '???', isOnline: true },
-      },
-    })),
+    set((state) => {
+      if (!state.crewMembers[nodeId]) return state;
+      return {
+        crewMembers: {
+          ...state.crewMembers,
+          [nodeId]: { ...state.crewMembers[nodeId], batteryLevel: Math.min(level, 100) },
+        },
+      };
+    }),
 
   updateColor: (nodeId, color) =>
-    set((state) => ({
-      crewMembers: {
-        ...state.crewMembers,
-        [nodeId]: state.crewMembers[nodeId]
-          ? { ...state.crewMembers[nodeId], color }
-          : { nodeId, color, longName: 'Unknown', shortName: '???', isOnline: true },
-      },
-    })),
+    set((state) => {
+      if (!state.crewMembers[nodeId]) return state;
+      return {
+        crewMembers: {
+          ...state.crewMembers,
+          [nodeId]: { ...state.crewMembers[nodeId], color },
+        },
+      };
+    }),
 
   updateSnr: (nodeId, snr) =>
-    set((state) => ({
-      crewMembers: {
-        ...state.crewMembers,
-        [nodeId]: state.crewMembers[nodeId]
-          ? { ...state.crewMembers[nodeId], snr }
-          : { nodeId, snr, longName: 'Unknown', shortName: '???', isOnline: true },
-      },
-    })),
+    set((state) => {
+      if (!state.crewMembers[nodeId]) return state;
+      return {
+        crewMembers: {
+          ...state.crewMembers,
+          [nodeId]: { ...state.crewMembers[nodeId], snr },
+        },
+      };
+    }),
+
+  touchLastHeard: (nodeId, lastHeardSeconds) =>
+    set((state) => {
+      if (!state.crewMembers[nodeId]) return state;
+      return {
+        crewMembers: {
+          ...state.crewMembers,
+          [nodeId]: { ...state.crewMembers[nodeId], lastHeard: lastHeardSeconds, isOnline: true },
+        },
+      };
+    }),
 
   setFocusNode: (nodeId) => set({ focusNodeId: nodeId }),
 
@@ -117,6 +154,27 @@ export const useCrewStore = create<CrewState>((set, get) => ({
   loadMyColor: async () => {
     const color = await AsyncStorage.getItem('rndvu_my_color');
     if (color) set({ myColor: color });
+  },
+
+  loadCrewMembers: async () => {
+    try {
+      const raw = await AsyncStorage.getItem(CREW_STORAGE_KEY);
+      if (!raw) return;
+      const stored = JSON.parse(raw) as Record<number, CrewMember>;
+      // Age out peers we haven't heard from in >7 days. Keeps the crew list
+      // from accumulating ghosts across months of testing, and keeps self.
+      const STALE_CUTOFF_SECS = 7 * 24 * 3600;
+      const nowSec = Math.floor(Date.now() / 1000);
+      const crewMembers: Record<number, CrewMember> = {};
+      for (const [idStr, m] of Object.entries(stored)) {
+        if (m.isSelf) { crewMembers[Number(idStr)] = m; continue; }
+        if (!m.lastHeard) { crewMembers[Number(idStr)] = m; continue; }
+        if (nowSec - m.lastHeard < STALE_CUTOFF_SECS) {
+          crewMembers[Number(idStr)] = m;
+        }
+      }
+      set({ crewMembers });
+    } catch {}
   },
 
   getOnlineMembers: () =>
@@ -167,3 +225,11 @@ export const useCrewStore = create<CrewState>((set, get) => ({
     return null;
   },
 }));
+
+// Persist crewMembers on any change (debounced). Survives cold start so the
+// crew list doesn't go empty while waiting for the T-Echo's nodedb drain.
+useCrewStore.subscribe((state, prev) => {
+  if (state.crewMembers !== prev.crewMembers) {
+    scheduleSave();
+  }
+});

@@ -20,24 +20,45 @@
         "NSBluetoothPeripheralUsageDescription": "RNDVU uses Bluetooth to connect to your mesh device.",
         "NSLocationWhenInUseUsageDescription": "RNDVU uses your location to share your position with your crew on the festival map.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "RNDVU uses your location in the background to keep your crew updated on your position.",
-        "UIBackgroundModes": ["bluetooth-central", "location"]
+        "UIBackgroundModes": [
+          "bluetooth-central",
+          "location",
+          "bluetooth-central",
+          "location"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "plugins": [
-      ["react-native-ble-plx", {
-        "isBackgroundEnabled": true,
-        "modes": ["peripheral", "central"],
-        "bluetoothAlwaysPermission": "RNDVU uses Bluetooth to connect to your mesh device."
-      }],
-      ["expo-location", {
-        "locationAlwaysAndWhenInUsePermission": "RNDVU uses your location to share with your crew."
-      }],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": true,
+          "modes": [
+            "peripheral",
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "RNDVU uses Bluetooth to connect to your mesh device."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "RNDVU uses your location to share with your crew."
+        }
+      ],
       "expo-secure-store",
       "expo-font",
-      "expo-file-system"
+      "expo-file-system",
+      "expo-router"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "da3fba95-ad55-4b74-9ab3-fc9d4b8705ec"
+      }
     }
   }
 }

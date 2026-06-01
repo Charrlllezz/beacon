@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
-  ScrollView, View, Text, StyleSheet, TouchableOpacity, Modal, Pressable, TextInput,
+  ScrollView, View, Text, StyleSheet, TouchableOpacity, Modal, Pressable, TextInput, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
@@ -89,19 +89,30 @@ export default function ScheduleScreen() {
   const dayConfig = FESTIVAL_DAYS[selectedDay];
 
   async function commitGoing(stage: Stage, slot: ScheduleSlot) {
+    if (!myNodeNum) {
+      Alert.alert('Not Ready', 'Still connecting to your device — try again in a moment.');
+      return;
+    }
     toggleMyGoing(stage.id, slot.artistId);
-    const myId = myNodeNum ?? 0;
     const text = buildGoingMessage(stage.id, slot.artistId);
-    const msg = parseMessage(text, myId, myName, Date.now(), 0);
-    addMessage({ ...msg, id: `self-going-${Date.now()}` });
+    const selfId = `self-going-${Date.now()}`;
+    const msg = parseMessage(text, myNodeNum, myName, Date.now(), 0);
+    addMessage({ ...msg, id: selfId, sendStatus: 'sending' });
     useScheduleStore.getState().addGoingEntry({
-      nodeId: myId,
+      nodeId: myNodeNum,
       nodeName: myName,
       stageId: stage.id,
       artistId: slot.artistId,
       timestamp: Date.now(),
     });
-    try { await bleService.sendText(text); } catch {}
+    try {
+      await bleService.sendText(text);
+      useMessagesStore.getState().setSendStatus(selfId, 'sent');
+    } catch (e) {
+      console.warn('going broadcast failed:', e);
+      useMessagesStore.getState().setSendStatus(selfId, 'failed');
+      Alert.alert('Broadcast Failed', "Your pick is saved locally but couldn't be sent to your crew. Check your device connection.");
+    }
   }
 
   async function handleGoing(stage: Stage, slot: ScheduleSlot) {
@@ -163,7 +174,7 @@ export default function ScheduleScreen() {
 
   const filteredStageData = useMemo(() => {
     return stages
-      .filter(stage => !activeStageId || activeStageId === stage.id)
+      .filter(stage => !activeStageId || activeStageId === stage.id || query)
       .map(stage => {
         let slots = stage.schedule
           .filter(s => slotMatchesDay(s, dayConfig.date))

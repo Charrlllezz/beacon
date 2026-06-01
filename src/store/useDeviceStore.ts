@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { MyNodeInfo } from '../types/mesh';
+import type { MyNodeInfo, DeviceMetadata } from '../types/mesh';
 
 const LAST_DEVICE_KEY = 'rndvu_last_device';
 
@@ -25,14 +25,21 @@ interface DeviceState {
   myNodeInfo: MyNodeInfo | null;
   discoveredDevices: DiscoveredDevice[];
   firmwareVersion: string | null;
+  hwModel: number | null;
+  hasPKC: boolean | null;
   channelName: string;
+  channelIndex: number | null;
+  lastPacketAt: number | null;
 
   setStatus: (status: ConnectionStatus) => void;
   setConnectedDevice: (id: string, name: string) => void;
   setMyNodeInfo: (info: MyNodeInfo) => void;
+  setMetadata: (meta: DeviceMetadata) => void;
   addDiscoveredDevice: (device: DiscoveredDevice) => void;
   clearDiscoveredDevices: () => void;
   setChannelName: (name: string) => void;
+  setChannelIndex: (idx: number) => void;
+  setLastPacketAt: (ts: number) => void;
   disconnect: () => void;
   saveLastDevice: () => void;
   loadLastDevice: () => Promise<{ id: string; name: string } | null>;
@@ -46,13 +53,23 @@ export const useDeviceStore = create<DeviceState>((set) => ({
   myNodeInfo: null,
   discoveredDevices: [],
   firmwareVersion: null,
+  hwModel: null,
+  hasPKC: null,
   channelName: 'RNDVU',
+  channelIndex: null,
+  lastPacketAt: null,
 
   setStatus: (status) => set({ status }),
   setConnectedDevice: (id, name) =>
     set({ connectedDeviceId: id, connectedDeviceName: name }),
   setMyNodeInfo: (info) =>
     set({ myNodeInfo: info, myNodeNum: info.myNodeNum }),
+  setMetadata: (meta) =>
+    set({
+      firmwareVersion: meta.firmwareVersion ?? null,
+      hwModel: meta.hwModel ?? null,
+      hasPKC: meta.hasPKC ?? null,
+    }),
   addDiscoveredDevice: (device) =>
     set((state) => ({
       discoveredDevices: state.discoveredDevices.some((d) => d.id === device.id)
@@ -61,6 +78,8 @@ export const useDeviceStore = create<DeviceState>((set) => ({
     })),
   clearDiscoveredDevices: () => set({ discoveredDevices: [] }),
   setChannelName: (channelName) => set({ channelName }),
+  setChannelIndex: (channelIndex) => set({ channelIndex }),
+  setLastPacketAt: (lastPacketAt) => set({ lastPacketAt }),
   disconnect: () =>
     set({
       status: 'disconnected',
@@ -88,3 +107,30 @@ export const useDeviceStore = create<DeviceState>((set) => ({
     return null;
   },
 }));
+
+/**
+ * Resolve once myNodeNum is populated from the device's config drain, or null
+ * if the timeout elapses first. Replaces hardcoded setTimeout guesses around
+ * setOwner so we wait exactly as long as the device needs.
+ */
+export function waitForMyNode(timeoutMs = 10000): Promise<number | null> {
+  return new Promise((resolve) => {
+    const existing = useDeviceStore.getState().myNodeNum;
+    if (existing !== null && existing !== 0) {
+      resolve(existing);
+      return;
+    }
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const unsub = useDeviceStore.subscribe((state) => {
+      if (state.myNodeNum !== null && state.myNodeNum !== 0) {
+        unsub();
+        if (timeout) clearTimeout(timeout);
+        resolve(state.myNodeNum);
+      }
+    });
+    timeout = setTimeout(() => {
+      unsub();
+      resolve(null);
+    }, timeoutMs);
+  });
+}

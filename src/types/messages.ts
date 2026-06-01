@@ -2,12 +2,18 @@ import type { GpsPoint } from './festival';
 
 export type MessageType = 'text' | 'heading' | 'rally' | 'sos' | 'going' | 'calibration' | 'color' | 'tag' | 'meetup';
 
+export type SendStatus = 'sending' | 'sent' | 'failed';
+
 export interface BaseMessage {
   id: string;
   fromNodeId: number;
   fromName: string;
   timestamp: number; // unix ms
   channelIndex: number;
+  // Only populated for self-originated messages — represents the phone→T-Echo
+  // BLE write result. 'sent' doesn't confirm LoRa delivery (broadcasts are
+  // fire-and-forget), just that the outbound write succeeded.
+  sendStatus?: SendStatus;
 }
 
 export interface TextMessage extends BaseMessage {

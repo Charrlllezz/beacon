@@ -1,18 +1,21 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Colors, FontSize, Spacing } from '../../config/theme';
 
 interface Props {
   title: string;
   subtitle?: string;
+  onLongPress?: () => void;
 }
 
-export default function RNDVUHeader({ title, subtitle }: Props) {
+export default function RNDVUHeader({ title, subtitle, onLongPress }: Props) {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>{title}</Text>
-      {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
-    </View>
+    <Pressable onLongPress={onLongPress} delayLongPress={1500}>
+      <View style={styles.container}>
+        <Text style={styles.title}>{title}</Text>
+        {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+      </View>
+    </Pressable>
   );
 }
 

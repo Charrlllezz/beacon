@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, Modal, TextInput, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, Pressable, Modal, TextInput, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import MapView, { Marker, UrlTile, PROVIDER_DEFAULT, Region } from 'react-native-maps';
@@ -139,62 +139,24 @@ export default function MapScreen() {
     setTimeout(() => setFocusNode(null), 600);
   }, [focusNodeId]);
 
-  // Smart zoom on tab focus (only auto-fits once per tab visit, not on every location update)
-  const hasFittedRef = useRef(false);
+  // Center on current location each time the tab is focused
   useFocusEffect(
     useCallback(() => {
-      // Skip if focusNodeId is active — the effect above handles that
-      if (focusNodeId) return;
+      if (focusNodeId) return; // crew-focus effect handles this case
 
-      // Reset fitted flag when tab is focused so we fit once per visit
-      hasFittedRef.current = false;
-
-      const coords: { latitude: number; longitude: number }[] = [];
-
-      // Gather crew positions
-      for (const m of Object.values(crewMembers)) {
-        if (!m.isSelf && m.lat !== undefined && m.lng !== undefined) {
-          coords.push({ latitude: m.lat, longitude: m.lng });
-        }
-      }
-
-      // Add self location
-      if (myLocation) {
-        coords.push({ latitude: myLocation.lat, longitude: myLocation.lng });
-      }
-
-      // Small delay to ensure map is mounted after tab transition
       const timer = setTimeout(() => {
-        if (hasFittedRef.current) return;
-        hasFittedRef.current = true;
-
-        if (coords.length >= 2) {
-          // Crew + self: fit all pins with padding
-          mapRef.current?.fitToCoordinates(coords, {
-            edgePadding: { top: 80, right: 60, bottom: 120, left: 60 },
-            animated: true,
-          });
-        } else if (coords.length === 1) {
-          // Only self (or single crew member): walking-scale zoom
-          mapRef.current?.animateToRegion({
-            latitude: coords[0].latitude,
-            longitude: coords[0].longitude,
-            latitudeDelta: 0.004,
-            longitudeDelta: 0.004,
-          }, 400);
-        } else if (myLocation) {
-          // No crew but have self location: center on self
+        if (myLocation) {
           mapRef.current?.animateToRegion({
             latitude: myLocation.lat,
             longitude: myLocation.lng,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
+            latitudeDelta: 0.004,
+            longitudeDelta: 0.004,
           }, 400);
         }
       }, 300);
 
       return () => clearTimeout(timer);
-    }, [focusNodeId])
+    }, [focusNodeId, myLocation])
   );
 
   const handleLongPress = useCallback((e: any) => {
@@ -215,9 +177,14 @@ export default function MapScreen() {
 
   const handleTagSubmit = useCallback(async (name: string, category: TagCategory, scope: TagScope) => {
     if (!tagCoord) return;
-    const myId = myNodeNum ?? 0;
-    const myName = myId && crewMembers[myId] ? crewMembers[myId].longName : 'You';
-    const channelIndex = scope === 'community' ? 1 : 0;
+    if (!myNodeNum) {
+      Alert.alert('Not Ready', 'Still connecting to your device — try again in a moment.');
+      return;
+    }
+    const myName = crewMembers[myNodeNum]?.longName ?? 'You';
+    // Channel 0 always — community scope (channel 1) isn't provisioned in
+    // Model 1. When Model 2 adds per-crew channels, route via scope again.
+    const channelIndex = 0;
 
     const tag: TaggedPOI = {
       id: `tag-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -234,13 +201,16 @@ export default function MapScreen() {
     addTag(tag);
 
     const wireMsg = buildTagMessage(tagCoord.latitude, tagCoord.longitude, name);
-    const msg = parseMessage(wireMsg, myId, myName, Date.now(), channelIndex);
-    addMessage({ ...msg, id: `self-tag-${Date.now()}` });
+    const selfId = `self-tag-${Date.now()}`;
+    const msg = parseMessage(wireMsg, myNodeNum, myName, Date.now(), channelIndex);
+    addMessage({ ...msg, id: selfId, sendStatus: 'sending' });
 
     try {
       await bleService.sendText(wireMsg, channelIndex);
+      useMessagesStore.getState().setSendStatus(selfId, 'sent');
     } catch (e) {
       console.warn('Tag send failed:', e);
+      useMessagesStore.getState().setSendStatus(selfId, 'failed');
       Alert.alert('Tag Failed', 'Tag was saved locally but could not be broadcast to your crew.');
     }
 
@@ -253,17 +223,22 @@ export default function MapScreen() {
       <ConnectionBar />
 
       <View style={styles.mapWrapper}>
-        <MapView
+        {(!myLocation || (myLocation.lat === 0 && myLocation.lng === 0)) && (
+          <View style={[styles.map, { alignItems: 'center', justifyContent: 'center' }]}>
+            <Text style={{ color: Colors.textSecondary }}>Getting your location...</Text>
+          </View>
+        )}
+        {myLocation && !(myLocation.lat === 0 && myLocation.lng === 0) && <MapView
           ref={mapRef}
           style={styles.map}
           provider={PROVIDER_DEFAULT}
           mapType={isNearVenue ? 'satellite' : 'standard'}
-          initialRegion={myLocation ? {
+          initialRegion={{
             latitude: myLocation.lat,
             longitude: myLocation.lng,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          } : INITIAL_REGION}
+            latitudeDelta: 0.006,
+            longitudeDelta: 0.006,
+          }}
           onLongPress={handleLongPress}
           showsUserLocation
           showsMyLocationButton={false}
@@ -283,29 +258,7 @@ export default function MapScreen() {
             />
           )}
 
-          {/* Stage markers from festival config */}
-          {showStages && config.stages.map(stage => {
-            const now = festivalConfig.getNowPlaying(stage.id);
-            const next = !now ? festivalConfig.getUpNext(stage.id) : null;
-            const slot = now ?? next;
-            return (
-              <Marker
-                key={stage.id}
-                coordinate={{ latitude: stage.location.lat, longitude: stage.location.lng }}
-                tracksViewChanges={false}
-              >
-                <View style={styles.stagePin}>
-                  <View style={[styles.stageDot, { backgroundColor: stage.color }]} />
-                  <Text style={[styles.stageName, { color: stage.color }]}>{stage.shortName}</Text>
-                  {slot && (
-                    <Text style={styles.stageNow} numberOfLines={1}>
-                      {now ? slot.artistName : `Next: ${slot.artistName}`}
-                    </Text>
-                  )}
-                </View>
-              </Marker>
-            );
-          })}
+          {/* Stage markers disabled — coordinates not accurate enough */}
 
           {/* Community-tagged POIs (filtered) */}
           {filteredTags.map(tag => (
@@ -341,7 +294,7 @@ export default function MapScreen() {
               </Marker>
             );
           })}
-        </MapView>
+        </MapView>}
 
         {/* Search & filter overlay */}
         <View style={styles.filterOverlay}>
@@ -451,8 +404,8 @@ export default function MapScreen() {
         animationType="slide"
         onRequestClose={() => setTagCoord(null)}
       >
-        <View style={styles.sheetBackdrop}>
-          <View style={styles.sheetContent}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setTagCoord(null)}>
+          <Pressable style={styles.sheetContent} onPress={() => {}}>
             {tagCoord && (
               <TagLocationSheet
                 coordinate={tagCoord}
@@ -460,8 +413,8 @@ export default function MapScreen() {
                 onCancel={() => setTagCoord(null)}
               />
             )}
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       <FirstOpenTip
