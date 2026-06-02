@@ -71,7 +71,22 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   clearMessages: () => {
+    // Cancel any pending debounced write first — otherwise a queued persist
+    // holding the old (non-empty) array fires after removeItem and resurrects
+    // the cleared messages on the next load.
+    if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
     set({ messages: [] });
     AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
   },
 }));
+
+// Flush the pending debounced write immediately. Call this from AppState
+// 'background'/'inactive' so the last few seconds of messages survive a
+// suspend or kill instead of being lost inside the 5s debounce window.
+export function flushPendingPersist(): void {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(useMessagesStore.getState().messages)).catch(() => {});
+}

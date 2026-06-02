@@ -8,9 +8,11 @@ export function timeAgo(timestampSeconds: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export function formatTime(isoString: string): string {
+export function formatTime(isoString: string, timeZone?: string): string {
   const date = new Date(isoString);
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  // Pass the festival timezone so set times render in venue-local time even
+  // when the viewer's phone is on a different timezone.
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone });
 }
 
 export function isOnline(lastHeardSeconds?: number, thresholdSeconds = 3600): boolean {

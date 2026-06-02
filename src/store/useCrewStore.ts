@@ -22,6 +22,9 @@ function scheduleSave() {
 interface CrewState {
   crewMembers: Record<number, CrewMember>;
   myLocation: { lat: number; lng: number } | null;
+  // True once a phone-GPS fix has set myLocation. Used to stop the T-Echo's
+  // coarser self-position from overwriting the accurate phone fix.
+  myLocationIsPhone: boolean;
   myColor: string | null;
   focusNodeId: number | null;
   sortMode: CrewSortMode;
@@ -32,7 +35,7 @@ interface CrewState {
   updateColor: (nodeId: number, color: string) => void;
   updateSnr: (nodeId: number, snr: number) => void;
   touchLastHeard: (nodeId: number, lastHeardSeconds: number) => void;
-  setMyLocation: (lat: number, lng: number) => void;
+  setMyLocation: (lat: number, lng: number, fromPhone?: boolean) => void;
   setMyColor: (color: string) => void;
   loadMyColor: () => Promise<void>;
   loadCrewMembers: () => Promise<void>;
@@ -48,6 +51,7 @@ interface CrewState {
 export const useCrewStore = create<CrewState>((set, get) => ({
   crewMembers: {},
   myLocation: null,
+  myLocationIsPhone: false,
   myColor: null,
   focusNodeId: null,
   sortMode: 'alpha' as CrewSortMode,
@@ -136,7 +140,17 @@ export const useCrewStore = create<CrewState>((set, get) => ({
 
   setSortMode: (mode) => set({ sortMode: mode }),
 
-  setMyLocation: (lat, lng) => set({ myLocation: { lat, lng } }),
+  setMyLocation: (lat, lng, fromPhone = false) =>
+    set((state) => {
+      // Phone GPS (high accuracy, via expo-location) wins over the T-Echo's own
+      // self-position. Once we have a phone fix, ignore radio self-position so
+      // it can't drag the user's dot to a stale/coarse location.
+      if (!fromPhone && state.myLocationIsPhone) return state;
+      return {
+        myLocation: { lat, lng },
+        myLocationIsPhone: fromPhone ? true : state.myLocationIsPhone,
+      };
+    }),
 
   setMyColor: (color) => {
     set((state) => {
