@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const GOING_KEY = 'rndvu_my_going_picks';
+const ENTRIES_KEY = 'rndvu_going_entries';
 
 interface GoingEntry {
   nodeId: number;
@@ -35,22 +36,29 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   myGoingPicks: [],
 
   addGoingEntry: (entry) =>
-    set((state) => ({
-      goingEntries: [
-        // deduplicate by (nodeId, stageId, artistId)
+    set((state) => {
+      // deduplicate by (nodeId, stageId, artistId)
+      const goingEntries = [
         ...state.goingEntries.filter(
           (e) => !(e.nodeId === entry.nodeId && e.stageId === entry.stageId && e.artistId === entry.artistId)
         ),
         entry,
-      ],
-    })),
+      ];
+      // Persist crew RSVPs too (not just my own picks) so the schedule view
+      // isn't inconsistent after a restart — your picks used to survive while
+      // every crew member's "going" vanished.
+      AsyncStorage.setItem(ENTRIES_KEY, JSON.stringify(goingEntries)).catch(() => {});
+      return { goingEntries };
+    }),
 
   removeGoingEntry: (nodeId, stageId, artistId) =>
-    set((state) => ({
-      goingEntries: state.goingEntries.filter(
+    set((state) => {
+      const goingEntries = state.goingEntries.filter(
         (e) => !(e.nodeId === nodeId && e.stageId === stageId && e.artistId === artistId)
-      ),
-    })),
+      );
+      AsyncStorage.setItem(ENTRIES_KEY, JSON.stringify(goingEntries)).catch(() => {});
+      return { goingEntries };
+    }),
 
   toggleMyGoing: (stageId, artistId) =>
     set((state) => {
@@ -85,6 +93,12 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       const raw = await AsyncStorage.getItem(GOING_KEY);
       if (raw) {
         set({ myGoingPicks: JSON.parse(raw) });
+      }
+    } catch {}
+    try {
+      const rawEntries = await AsyncStorage.getItem(ENTRIES_KEY);
+      if (rawEntries) {
+        set({ goingEntries: JSON.parse(rawEntries) });
       }
     } catch {}
   },

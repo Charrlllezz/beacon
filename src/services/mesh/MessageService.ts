@@ -1,7 +1,11 @@
-import type { Message, TextMessage, HeadingMessage, RallyMessage, SOSMessage, GoingMessage, CalibrationMessage, ColorMessage, TagMessage, MeetupMessage } from '../../types/messages';
-import type { GpsPoint } from '../../types/festival';
+import type { Message, TextMessage, HeadingMessage, RallyMessage, SOSMessage, GoingMessage, UngoingMessage, CalibrationMessage, ColorMessage, TagMessage, MeetupMessage } from '../../types/messages';
+import type { GpsPoint, TagCategory } from '../../types/festival';
 
 let _seq = 0;
+
+// Runtime list mirroring the TagCategory union — used to detect whether an
+// inbound MF:T payload carries a category segment (new format) or not (old).
+const TAG_CATEGORIES: readonly TagCategory[] = ['stage', 'food', 'water', 'restroom', 'camp', 'custom'];
 
 export function parseMessage(
   raw: string,
@@ -51,6 +55,13 @@ export function parseMessage(
         if (!stageId || !artistId) throw new Error('Missing fields');
         return { ...base, type: 'going', stageId, artistId } as GoingMessage;
       }
+      case 'U': {
+        // Un-going: MF:U:<stageId>:<artistId> — peer deselected this pick.
+        const stageId = parts[2];
+        const artistId = parts[3];
+        if (!stageId || !artistId) throw new Error('Missing fields');
+        return { ...base, type: 'ungoing', stageId, artistId } as UngoingMessage;
+      }
       case 'C': {
         const tlPart = parts[2];
         const brPart = parts[3];
@@ -73,15 +84,22 @@ export function parseMessage(
         return { ...base, type: 'color', color } as ColorMessage;
       }
       case 'T': {
-        // MF:T:<lat>,<lng>:<name>
+        // New: MF:T:<lat>,<lng>:<category>:<name>
+        // Old: MF:T:<lat>,<lng>:<name>   (no category — defaults to 'custom')
         const coordPart = parts[2];
-        const name = parts.slice(3).join(':');
-        if (!coordPart || !name) throw new Error('Missing tag fields');
+        const rest = parts.slice(3).join(':');
+        if (!coordPart || !rest) throw new Error('Missing tag fields');
         const [latStr, lngStr] = coordPart.split(',');
         const lat = parseFloat(latStr);
         const lng = parseFloat(lngStr);
         if (isNaN(lat) || isNaN(lng)) throw new Error('Invalid coords');
-        return { ...base, type: 'tag', lat, lng, name } as TagMessage;
+        const sepIdx = rest.indexOf(':');
+        const head = sepIdx >= 0 ? rest.substring(0, sepIdx) : '';
+        const hasCategory = (TAG_CATEGORIES as readonly string[]).includes(head);
+        const category: TagCategory = hasCategory ? (head as TagCategory) : 'custom';
+        const name = hasCategory ? rest.substring(sepIdx + 1) : rest;
+        if (!name) throw new Error('Missing tag name');
+        return { ...base, type: 'tag', lat, lng, name, category } as TagMessage;
       }
       case 'M': {
         // MF:M:<HH>:<MM>|<location>|<note>|<lat,lng>
@@ -129,6 +147,10 @@ export function buildGoingMessage(stageId: string, artistId: string): string {
   return `MF:G:${stageId}:${artistId}`;
 }
 
+export function buildNotGoingMessage(stageId: string, artistId: string): string {
+  return `MF:U:${stageId}:${artistId}`;
+}
+
 export function buildColorMessage(color: string): string {
   return `MF:K:${color}`;
 }
@@ -138,15 +160,19 @@ export function buildCalibrationMessage(anchors: { topLeft: GpsPoint; bottomRigh
   return `MF:C:${tl.lat.toFixed(6)},${tl.lng.toFixed(6)}:${br.lat.toFixed(6)},${br.lng.toFixed(6)}`;
 }
 
-export function buildTagMessage(lat: number, lng: number, name: string): string {
-  return `MF:T:${lat.toFixed(4)},${lng.toFixed(4)}:${name.substring(0, 30)}`;
+export function buildTagMessage(lat: number, lng: number, name: string, category: TagCategory = 'custom'): string {
+  return `MF:T:${lat.toFixed(4)},${lng.toFixed(4)}:${category}:${name.substring(0, 30)}`;
 }
 
 export function buildMeetupMessage(hour: number, minute: number, location: string, note?: string, lat?: number, lng?: number): string {
   const hh = hour.toString().padStart(2, '0');
   const mm = minute.toString().padStart(2, '0');
-  let msg = `MF:M:${hh}:${mm}|${location}`;
-  msg += `|${note ? note.substring(0, 40) : ''}`;
+  // '|' is the meetup field delimiter — strip it from free text so a location
+  // or note containing a pipe can't corrupt the wire format on the receiver.
+  const safeLocation = location.replace(/\|/g, ' ');
+  const safeNote = note ? note.substring(0, 40).replace(/\|/g, ' ') : '';
+  let msg = `MF:M:${hh}:${mm}|${safeLocation}`;
+  msg += `|${safeNote}`;
   if (lat != null && lng != null) msg += `|${lat.toFixed(4)},${lng.toFixed(4)}`;
   return msg;
 }

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Message } from '../types/messages';
+import type { Message, SendStatus } from '../types/messages';
 
 const STORAGE_KEY = 'rndvu_messages';
 const MAX_MESSAGES = 500;
@@ -20,6 +20,7 @@ interface MessagesState {
   isLoaded: boolean;
 
   addMessage: (message: Message) => void;
+  setSendStatus: (messageId: string, status: SendStatus) => void;
   loadMessages: () => Promise<void>;
   clearMessages: () => void;
 }
@@ -40,6 +41,21 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     });
   },
 
+  setSendStatus: (messageId, status) => {
+    set((state) => {
+      let changed = false;
+      const messages = state.messages.map(m => {
+        if (m.id === messageId) {
+          changed = true;
+          return { ...m, sendStatus: status };
+        }
+        return m;
+      });
+      if (changed) debouncedPersist(messages);
+      return { messages };
+    });
+  },
+
   loadMessages: async () => {
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
@@ -55,7 +71,22 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   clearMessages: () => {
+    // Cancel any pending debounced write first — otherwise a queued persist
+    // holding the old (non-empty) array fires after removeItem and resurrects
+    // the cleared messages on the next load.
+    if (persistTimer) { clearTimeout(persistTimer); persistTimer = null; }
     set({ messages: [] });
     AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
   },
 }));
+
+// Flush the pending debounced write immediately. Call this from AppState
+// 'background'/'inactive' so the last few seconds of messages survive a
+// suspend or kill instead of being lost inside the 5s debounce window.
+export function flushPendingPersist(): void {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(useMessagesStore.getState().messages)).catch(() => {});
+}

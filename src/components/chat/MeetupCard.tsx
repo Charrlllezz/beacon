@@ -18,12 +18,14 @@ function getLocationLabel(location: string): string {
   return location;
 }
 
-function getMeetupDate(hour: number, minute: number): Date {
-  const now = new Date();
-  const target = new Date(now);
+function getMeetupDate(hour: number, minute: number, sentAtMs: number): Date {
+  // Anchor to the day the meetup was SENT, not the viewer's current day.
+  // Anchoring to "now" made a meetup viewed even a minute after its time roll
+  // forward a full day ("in 23h" instead of "happening now"). Only roll to the
+  // next day if the chosen time is genuinely earlier than when it was sent.
+  const target = new Date(sentAtMs);
   target.setHours(hour, minute, 0, 0);
-  // If time has passed today, assume tomorrow
-  if (target <= now) target.setDate(target.getDate() + 1);
+  if (target.getTime() < sentAtMs) target.setDate(target.getDate() + 1);
   return target;
 }
 
@@ -44,7 +46,7 @@ export default function MeetupCard({ message, isMine }: Props) {
     return () => clearInterval(interval);
   }, []);
 
-  const meetupDate = getMeetupDate(message.hour, message.minute);
+  const meetupDate = getMeetupDate(message.hour, message.minute, message.timestamp);
   const msUntil = meetupDate.getTime() - now;
   const countdown = formatCountdown(msUntil);
   const locationLabel = getLocationLabel(message.location);
