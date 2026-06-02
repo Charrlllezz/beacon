@@ -11,7 +11,7 @@ import { Colors } from './src/config/theme';
 import TabNavigator from './src/navigation/TabNavigator';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
 import OnboardingScreen from './src/screens/OnboardingScreen';
-import { useMessagesStore } from './src/store/useMessagesStore';
+import { useMessagesStore, flushPendingPersist } from './src/store/useMessagesStore';
 import { useDeviceStore, waitForMyNode } from './src/store/useDeviceStore';
 import { useCrewStore } from './src/store/useCrewStore';
 import { useMapCalibrationStore } from './src/store/useMapCalibrationStore';
@@ -48,6 +48,7 @@ export default function App() {
   const loadTags = useTagStore(s => s.loadTags);
   const loadMyGoingPicks = useScheduleStore(s => s.loadMyGoingPicks);
   const unsubRef = useRef<{ packet?: () => void; status?: () => void }>({});
+  const gpsSubRef = useRef<Location.LocationSubscription | null>(null);
 
   useEffect(() => {
     // Register BLE listeners unconditionally so packets + status updates flow
@@ -77,6 +78,7 @@ export default function App() {
     return () => {
       unsubRef.current.packet?.();
       unsubRef.current.status?.();
+      stopPhoneGps();
     };
   }, []);
 
@@ -135,11 +137,17 @@ export default function App() {
     if (!onboardingComplete) return;
     const sub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'background') {
+        // Flush the message buffer so the last few seconds survive a suspend/kill.
+        flushPendingPersist();
+        // Stop the GPS watcher while backgrounded (we release the BLE slot too)
+        // and re-acquire on foreground.
+        stopPhoneGps();
         const { status } = useDeviceStore.getState();
         if (status === 'connected' || status === 'connecting' || status === 'reconnecting') {
           bleService.disconnect();
         }
       } else if (nextState === 'active') {
+        startPhoneGps();
         reconnectOnForeground();
       }
     });
@@ -167,16 +175,24 @@ export default function App() {
     // Get an immediate fix so the map has a location on first render
     try {
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      useCrewStore.getState().setMyLocation(loc.coords.latitude, loc.coords.longitude);
+      useCrewStore.getState().setMyLocation(loc.coords.latitude, loc.coords.longitude, true);
     } catch {}
 
-    // Keep updating in the background
-    await Location.watchPositionAsync(
+    // Replace any prior watcher (e.g. across a background/foreground cycle) so
+    // subscriptions don't stack. fromPhone=true marks this as the high-accuracy
+    // source so the radio's self-position can't override it.
+    gpsSubRef.current?.remove();
+    gpsSubRef.current = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.High, distanceInterval: 5 },
       (loc) => {
-        useCrewStore.getState().setMyLocation(loc.coords.latitude, loc.coords.longitude);
+        useCrewStore.getState().setMyLocation(loc.coords.latitude, loc.coords.longitude, true);
       },
     );
+  }
+
+  function stopPhoneGps() {
+    gpsSubRef.current?.remove();
+    gpsSubRef.current = null;
   }
 
   async function loadOnboardingStateAndReconnect() {

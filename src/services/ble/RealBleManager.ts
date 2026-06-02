@@ -15,6 +15,18 @@ export type StatusCallback = (status: 'connected' | 'disconnected' | 'reconnecti
 
 const CONFIG_ID = 42;
 
+/**
+ * Thrown by writeAdmin when the BLE link drops partway through a provisioning
+ * sequence (setChannel etc.). Callers should treat it as "retry the whole
+ * transaction" rather than assuming a partial config landed.
+ */
+export class ProvisioningInterruptedError extends Error {
+  constructor() {
+    super('BLE connection lost during provisioning');
+    this.name = 'ProvisioningInterruptedError';
+  }
+}
+
 export class RealBleManager {
   private manager: BleManager;
   private device: Device | null = null;
@@ -24,6 +36,8 @@ export class RealBleManager {
   private disconnectSub: Subscription | null = null;
   private isConnected = false;
   private isConnecting = false;
+  private isReading = false;
+  private aborted = false;
   private configDrainComplete = false;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -118,6 +132,7 @@ export class RealBleManager {
       return;
     }
     this.isConnecting = true;
+    this.aborted = false;
     try {
       // Connect to device. No MTU negotiation anywhere — bundled requestMTU
       // caused 1-second connect failures on iPhone 13 (older BLE stack),
@@ -127,6 +142,15 @@ export class RealBleManager {
       const device = await this.manager.connectToDevice(deviceId, {
         timeout: 20000,
       });
+
+      // If disconnect()/background fired while connectToDevice was in flight,
+      // abandon this connection instead of re-acquiring the single BLE slot
+      // (the T-Echo holds only one central; the user wanted it released).
+      if (this.aborted) {
+        this.manager.cancelDeviceConnection(deviceId).catch(() => {});
+        this.isConnecting = false;
+        return;
+      }
 
       // Discover services
       await device.discoverAllServicesAndCharacteristics();
@@ -188,6 +212,13 @@ export class RealBleManager {
       // Start polling fromRadio to drain initial config
       await this.drainFromRadio();
 
+      // If the link dropped during the (up-to-10s) drain, don't start timers or
+      // hold a 'connected' claim — let the reconnect path take over cleanly.
+      if (!this.isConnected || this.aborted) {
+        this.isConnecting = false;
+        return;
+      }
+
       // Poll periodically for any missed notifications
       this.startPolling();
 
@@ -205,7 +236,14 @@ export class RealBleManager {
   }
 
   private async writeAdmin(bytes: Uint8Array): Promise<void> {
-    await this.device!.writeCharacteristicWithResponseForService(
+    // Provisioning is a multi-write sequence; if the link drops partway the
+    // remaining writes used to hit a stale `this.device!` and reject opaquely.
+    // Fail fast with a typed error so callers can retry the WHOLE transaction
+    // (and reprovision keeps NEEDS_REPROVISION set until it fully lands).
+    if (!this.device || !this.isConnected) {
+      throw new ProvisioningInterruptedError();
+    }
+    await this.device.writeCharacteristicWithResponseForService(
       MESHTASTIC_SERVICE_UUID,
       TO_RADIO_UUID,
       this.uint8ToBase64(bytes),
@@ -314,6 +352,11 @@ export class RealBleManager {
   }
 
   disconnect(): void {
+    // Abort any in-flight connect() so a connectToDevice that resolves after
+    // this call doesn't silently re-acquire the single BLE slot, and clear
+    // isConnecting so a pending reconnect attempt isn't blocked.
+    this.aborted = true;
+    this.isConnecting = false;
     this.cancelReconnect();
     this.stopPolling();
     this.stopHeartbeat();
@@ -344,9 +387,14 @@ export class RealBleManager {
     const delay = Math.min(500 * Math.pow(2, this.reconnectAttempts - 1), 15000);
 
     this.reconnectTimer = setTimeout(async () => {
-      // Bail if we're already connected, have no target, or a manual
-      // connect() is already in flight (e.g., user tapped Reconnect).
-      if (this.isConnected || !this.lastDeviceId || this.isConnecting) return;
+      if (this.isConnected || !this.lastDeviceId) return;
+      // A connect() is still parked (e.g. mid config-drain). This was the only
+      // scheduled retry, so re-arm shortly instead of silently giving up —
+      // otherwise a disconnect during connect wedges the UI on 'reconnecting'.
+      if (this.isConnecting) {
+        this.reconnectTimer = setTimeout(() => this.attemptReconnect(), 1000);
+        return;
+      }
       try {
         await this.connect(this.lastDeviceId);
       } catch {
@@ -365,6 +413,12 @@ export class RealBleManager {
 
   private async readFromRadio(): Promise<boolean> {
     if (!this.device || !this.isConnected) return false;
+    // Serialize reads: the FROM_NUM notify, the 5s poll, and drainFromRadio can
+    // all call this concurrently, and each FROM_RADIO read destructively pops
+    // one frame from the firmware FIFO. A skipped concurrent read is harmless —
+    // the in-flight read drains that frame and the next poll/notify continues.
+    if (this.isReading) return false;
+    this.isReading = true;
 
     try {
       const char = await this.device.readCharacteristicForService(
@@ -388,6 +442,8 @@ export class RealBleManager {
     } catch (error) {
       console.warn('readFromRadio error:', error);
       return false;
+    } finally {
+      this.isReading = false;
     }
   }
 
@@ -401,6 +457,10 @@ export class RealBleManager {
     const TIMEOUT_MS = 10000;
     const PACE_MS = 200;
     while (!this.configDrainComplete && Date.now() - startTime < TIMEOUT_MS) {
+      // Bail immediately if the link dropped mid-drain — otherwise this loop
+      // spins to its full 10s timeout while connect() holds isConnecting=true,
+      // blocking the reconnect attempt and wedging the UI on 'reconnecting'.
+      if (!this.isConnected) break;
       const hasMore = await this.readFromRadio();
       if (!hasMore && !this.configDrainComplete) {
         // Empty read before configComplete — firmware is still preparing the

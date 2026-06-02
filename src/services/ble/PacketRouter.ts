@@ -132,6 +132,12 @@ function routePacket(packet: MeshPacket, myNodeNum: number | null): void {
         break;
       }
 
+      // Un-going removes a peer's stale RSVP; never shown as a chat bubble.
+      if (message.type === 'ungoing') {
+        useScheduleStore.getState().removeGoingEntry(packet.from, message.stageId, message.artistId);
+        break;
+      }
+
       useMessagesStore.getState().addMessage(message);
 
       if (message.type === 'going') {
@@ -152,7 +158,7 @@ function routePacket(packet: MeshPacket, myNodeNum: number | null): void {
         useTagStore.getState().addTag({
           id: `tag-${packet.from}-${Date.now()}`,
           name: message.name,
-          category: 'custom',
+          category: message.category,
           scope: message.channelIndex === 1 ? 'community' : 'crew',
           lat: message.lat,
           lng: message.lng,

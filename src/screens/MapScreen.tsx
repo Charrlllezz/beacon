@@ -69,14 +69,15 @@ export default function MapScreen() {
   const [showFilters, setShowFilters] = useState(false);
   const [tilesReady, setTilesReady] = useState(false);
 
-  // Prefetch satellite tiles for offline use
+  // Render the cached-tile overlay right away — UrlTile serves from the on-disk
+  // cache and transparently falls back to the network when online, so there's
+  // no reason to gate it on prefetch completion. Gating used to leave tilesReady
+  // false forever if the prefetch promise rejected, hiding the satellite layer
+  // entirely. Warm the cache in the background regardless.
   useEffect(() => {
-    if (isTilesPrefetched()) {
-      setTilesReady(true);
-    } else {
-      prefetchVenueTiles((done, total) => {
-        if (done === total) setTilesReady(true);
-      }).catch(() => setTilesReady(false));
+    setTilesReady(true);
+    if (!isTilesPrefetched()) {
+      prefetchVenueTiles().catch((e) => console.warn('Tile prefetch failed (non-fatal):', e));
     }
   }, []);
 
@@ -200,7 +201,7 @@ export default function MapScreen() {
 
     addTag(tag);
 
-    const wireMsg = buildTagMessage(tagCoord.latitude, tagCoord.longitude, name);
+    const wireMsg = buildTagMessage(tagCoord.latitude, tagCoord.longitude, name, category);
     const selfId = `self-tag-${Date.now()}`;
     const msg = parseMessage(wireMsg, myNodeNum, myName, Date.now(), channelIndex);
     addMessage({ ...msg, id: selfId, sendStatus: 'sending' });

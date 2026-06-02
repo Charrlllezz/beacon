@@ -21,10 +21,7 @@
         "NSLocationWhenInUseUsageDescription": "RNDVU uses your location to share your position with your crew on the festival map.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "RNDVU uses your location in the background to keep your crew updated on your position.",
         "UIBackgroundModes": [
-          "bluetooth-central",
-          "location",
-          "bluetooth-central",
-          "location"
+          "bluetooth-central"
         ],
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -49,8 +46,7 @@
       ],
       "expo-secure-store",
       "expo-font",
-      "expo-file-system",
-      "expo-router"
+      "expo-file-system"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

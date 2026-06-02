@@ -10,7 +10,7 @@ import { useDeviceStore } from '../store/useDeviceStore';
 import { useCrewStore } from '../store/useCrewStore';
 import { useMessagesStore } from '../store/useMessagesStore';
 import { bleService } from '../services/ble/BleManager';
-import { buildGoingMessage, parseMessage } from '../services/mesh/MessageService';
+import { buildGoingMessage, buildNotGoingMessage, parseMessage } from '../services/mesh/MessageService';
 import RNDVUHeader from '../components/common/RNDVUHeader';
 import FirstOpenTip from '../components/common/FirstOpenTip';
 import ConnectionBar from '../components/common/ConnectionBar';
@@ -24,10 +24,25 @@ const FESTIVAL_DAYS = [
   { label: 'Sun', date: 19 },
 ];
 
+// Bucket slots by the FESTIVAL's calendar day/hour, not the device's — a
+// traveler whose phone is still on home time would otherwise see sets land in
+// the wrong day column.
+const FESTIVAL_TZ = festivalConfig.getConfig().festival.timezone;
+
+function festivalDateParts(iso: string): { day: number; hour: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: FESTIVAL_TZ, day: 'numeric', hour: 'numeric', hour12: false,
+  }).formatToParts(new Date(iso));
+  const day = Number(parts.find(p => p.type === 'day')?.value ?? '0');
+  let hour = Number(parts.find(p => p.type === 'hour')?.value ?? '0');
+  if (hour === 24) hour = 0; // some engines emit '24' for midnight under hour12:false
+  return { day, hour };
+}
+
 function slotMatchesDay(slot: ScheduleSlot, dayOfMonth: number): boolean {
-  const d = new Date(slot.start);
-  const startDay = d.getDate();
-  return startDay === dayOfMonth || (d.getHours() < 6 && startDay === dayOfMonth + 1);
+  // Late-night sets (before 6am festival-local) belong to the previous day.
+  const { day, hour } = festivalDateParts(slot.start);
+  return day === dayOfMonth || (hour < 6 && day === dayOfMonth + 1);
 }
 
 interface ConflictInfo {
@@ -115,11 +130,22 @@ export default function ScheduleScreen() {
     }
   }
 
+  async function broadcastNotGoing(stageId: string, artistId: string) {
+    // Best-effort un-going broadcast so peers drop the stale RSVP. Fire-and-
+    // forget like all broadcasts; local state was already updated by the caller.
+    try {
+      await bleService.sendText(buildNotGoingMessage(stageId, artistId));
+    } catch (e) {
+      console.warn('un-going broadcast failed:', e);
+    }
+  }
+
   async function handleGoing(stage: Stage, slot: ScheduleSlot) {
     // Tapping a pick that's already selected → deselect and clear any conflict tag
     if (checkMyGoing(stage.id, slot.artistId)) {
       toggleMyGoing(stage.id, slot.artistId);
       removeGoingEntry(myNodeNum ?? 0, stage.id, slot.artistId);
+      broadcastNotGoing(stage.id, slot.artistId);
       const key = `${stage.id}:${slot.artistId}`;
       setKeptBothKeys(prev => { const next = new Set(prev); next.delete(key); return next; });
       return;
@@ -153,8 +179,9 @@ export default function ScheduleScreen() {
       if (checkMyGoing(conflict.stageId, conflict.artistId)) {
         toggleMyGoing(conflict.stageId, conflict.artistId);
       }
-      // Also remove going entries so the party icon clears
+      // Also remove going entries so the party icon clears, and tell peers.
       removeGoingEntry(myId, conflict.stageId, conflict.artistId);
+      broadcastNotGoing(conflict.stageId, conflict.artistId);
       // Clean up kept-both tags for replaced conflicts
       const key = `${conflict.stageId}:${conflict.artistId}`;
       setKeptBothKeys(prev => { const next = new Set(prev); next.delete(key); return next; });
@@ -295,7 +322,7 @@ export default function ScheduleScreen() {
                   >
                     <View style={styles.artistInfo}>
                       <View style={styles.artistMeta}>
-                        <Text style={styles.artistTime}>{formatTime(slot.start)} – {formatTime(slot.end)}</Text>
+                        <Text style={styles.artistTime}>{formatTime(slot.start, FESTIVAL_TZ)} – {formatTime(slot.end, FESTIVAL_TZ)}</Text>
                         {isNow && <Text style={styles.nowLabel}> · NOW</Text>}
                         {isKeptBothConflict && <Text style={styles.conflictLabel}> · CONFLICT</Text>}
                       </View>
@@ -353,7 +380,7 @@ export default function ScheduleScreen() {
                 <View style={[styles.conflictDot, { backgroundColor: c.stageColor }]} />
                 <View>
                   <Text style={styles.conflictArtist}>{c.artistName}</Text>
-                  <Text style={styles.conflictMeta}>{c.stageName} · {formatTime(c.startTime)}</Text>
+                  <Text style={styles.conflictMeta}>{c.stageName} · {formatTime(c.startTime, FESTIVAL_TZ)}</Text>
                 </View>
               </View>
             ))}
