@@ -1,12 +1,8 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT, Region } from 'react-native-maps';
+import MapView, { PROVIDER_DEFAULT, Region } from 'react-native-maps';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
-import { festivalConfig } from '../../services/festival/FestivalConfig';
-import { useTagStore } from '../../store/useTagStore';
-import TaggedPOIPin from './TaggedPOIPin';
-
-const config = festivalConfig.getConfig();
+import { useCrewStore } from '../../store/useCrewStore';
 
 interface Props {
   visible: boolean;
@@ -18,25 +14,28 @@ interface Props {
 
 export default function MapPinPicker({ visible, initialCoord, onConfirm, onCancel, title = 'Drop a Pin' }: Props) {
   const mapRef = useRef<MapView>(null);
+  const myLocation = useCrewStore(s => s.myLocation);
+  const fallback = myLocation
+    ? { latitude: myLocation.lat, longitude: myLocation.lng }
+    : { latitude: 33.6803, longitude: -116.2378 };
   const [center, setCenter] = useState<{ latitude: number; longitude: number }>(
-    initialCoord ?? { latitude: config.venue.center.lat, longitude: config.venue.center.lng }
+    initialCoord ?? fallback
   );
-  const tags = useTagStore(s => s.tags);
 
   // Reset pin when modal opens with new initial coord
   React.useEffect(() => {
     if (visible && initialCoord) {
       setCenter(initialCoord);
     } else if (visible) {
-      setCenter({ latitude: config.venue.center.lat, longitude: config.venue.center.lng });
+      setCenter(myLocation ? { latitude: myLocation.lat, longitude: myLocation.lng } : fallback);
     }
   }, [visible, initialCoord]);
 
   const region: Region = {
     latitude: center.latitude,
     longitude: center.longitude,
-    latitudeDelta: Math.abs(config.venue.bounds.ne.lat - config.venue.bounds.sw.lat) * 1.2,
-    longitudeDelta: Math.abs(config.venue.bounds.ne.lng - config.venue.bounds.sw.lng) * 1.2,
+    latitudeDelta: 0.006,
+    longitudeDelta: 0.006,
   };
 
   const handleRegionChangeComplete = useCallback((r: Region) => {
@@ -61,33 +60,14 @@ export default function MapPinPicker({ visible, initialCoord, onConfirm, onCance
             ref={mapRef}
             style={styles.map}
             provider={PROVIDER_DEFAULT}
-            mapType="satellite"
+            mapType="standard"
             initialRegion={region}
             onRegionChangeComplete={handleRegionChangeComplete}
             showsUserLocation
             showsMyLocationButton={false}
             showsCompass={false}
             rotateEnabled={false}
-          >
-            {/* Stage markers */}
-            {config.stages.map(stage => (
-              <Marker
-                key={stage.id}
-                coordinate={{ latitude: stage.location.lat, longitude: stage.location.lng }}
-                tracksViewChanges={false}
-              >
-                <View style={styles.stagePin}>
-                  <View style={[styles.stageDot, { backgroundColor: stage.color }]} />
-                  <Text style={[styles.stageName, { color: stage.color }]}>{stage.shortName}</Text>
-                </View>
-              </Marker>
-            ))}
-
-            {/* Community-tagged POIs */}
-            {tags.map(tag => (
-              <TaggedPOIPin key={tag.id} poi={tag} />
-            ))}
-          </MapView>
+          />
 
           {/* Fixed center pin overlay */}
           <View style={styles.centerPinWrapper} pointerEvents="none">
@@ -148,25 +128,6 @@ const styles = StyleSheet.create({
   },
   map: {
     flex: 1,
-  },
-  stagePin: {
-    alignItems: 'center',
-    maxWidth: 90,
-  },
-  stageDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginBottom: 2,
-    borderWidth: 1.5,
-    borderColor: 'rgba(0,0,0,0.3)',
-  },
-  stageName: {
-    fontSize: 10,
-    fontWeight: '800',
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
   },
   centerPinWrapper: {
     position: 'absolute',

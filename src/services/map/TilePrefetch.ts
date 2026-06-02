@@ -24,7 +24,11 @@ function getTileDir(): Directory {
 }
 
 function getMarkerFile(): File {
-  return new File(Paths.document, '.tiles-prefetched');
+  // Versioned: bumped to v2 when the on-disk tile filename changed from
+  // "{y}.jpg" to "{y}" (no extension). Existing installs carry the old marker,
+  // so without a new name isTilesPrefetched() would short-circuit and the
+  // corrected tiles would never be downloaded on update.
+  return new File(Paths.document, '.tiles-prefetched-v2');
 }
 
 export function isTilesPrefetched(): boolean {
@@ -59,6 +63,7 @@ export async function prefetchVenueTiles(
   }
 
   let downloaded = 0;
+  let failed = 0;
   const total = tiles.length;
 
   // Download in batches of 10
@@ -68,11 +73,18 @@ export async function prefetchVenueTiles(
     await Promise.all(
       batch.map(async ({ z, x, y }) => {
         const dir = new Directory(tileDir, String(z), String(x));
-        if (!dir.exists) {
-          dir.create({ intermediates: true });
+        try {
+          if (!dir.exists) dir.create({ intermediates: true });
+        } catch {
+          // A concurrent task in this batch may have created it first — fine.
         }
 
-        const file = new File(dir, `${y}.jpg`);
+        // IMPORTANT: no file extension. react-native-maps' native cached
+        // overlay reads tiles at <tileCachePath>/{z}/{x}/{y} with NO suffix
+        // (AIRMapUrlTileCachedOverlay.m getTileImage). Writing "${y}.jpg" made
+        // every prefetched tile invisible and the map silently fell back to
+        // the network — useless at a no-signal venue.
+        const file = new File(dir, String(y));
         if (file.exists) {
           downloaded++;
           onProgress?.(downloaded, total);
@@ -84,7 +96,10 @@ export async function prefetchVenueTiles(
         try {
           await File.downloadFileAsync(url, file, { idempotent: true });
         } catch {
-          // Non-fatal: tile will load from network if available
+          // Non-fatal for this run: the tile loads from network if available,
+          // and we withhold the completion marker so the next launch retries
+          // just the missing tiles (existing ones are skipped above).
+          failed++;
         }
         downloaded++;
         onProgress?.(downloaded, total);
@@ -92,8 +107,12 @@ export async function prefetchVenueTiles(
     );
   }
 
-  // Mark prefetch complete
-  const marker = getMarkerFile();
-  marker.create();
-  marker.write(new Date().toISOString());
+  // Only mark prefetch complete when EVERY tile is on disk. Writing the marker
+  // after a partial/failed pass permanently poisoned the cache state, because
+  // isTilesPrefetched() short-circuits all future prefetch attempts.
+  if (failed === 0) {
+    const marker = getMarkerFile();
+    marker.create();
+    marker.write(new Date().toISOString());
+  }
 }

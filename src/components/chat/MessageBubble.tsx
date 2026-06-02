@@ -9,7 +9,17 @@ interface Props {
   isMine: boolean;
 }
 
+function statusGlyph(status?: string): { char: string; color: string } | null {
+  switch (status) {
+    case 'sending': return { char: '○', color: '#ffffff99' };
+    case 'sent':    return { char: '✓', color: '#ffffffcc' };
+    case 'failed':  return { char: '!', color: '#ff7b7b' };
+    default:        return null;
+  }
+}
+
 export default function MessageBubble({ message, isMine }: Props) {
+  const glyph = isMine ? statusGlyph(message.sendStatus) : null;
   return (
     <View style={[styles.row, isMine && styles.rowMine]}>
       <View style={[styles.bubble, isMine ? styles.bubbleMine : styles.bubbleTheirs]}>
@@ -17,7 +27,12 @@ export default function MessageBubble({ message, isMine }: Props) {
           <Text style={styles.sender}>{message.fromName}</Text>
         )}
         <Text style={styles.text}>{message.text}</Text>
-        <Text style={styles.time}>{timeAgo(message.timestamp / 1000)}</Text>
+        <View style={styles.footer}>
+          <Text style={styles.time}>{timeAgo(message.timestamp / 1000)}</Text>
+          {glyph && (
+            <Text style={[styles.statusGlyph, { color: glyph.color }]}>{glyph.char}</Text>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -59,10 +74,19 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     lineHeight: 20,
   },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
+    marginTop: 4,
+  },
   time: {
     fontSize: FontSize.xs,
     color: Colors.textMuted,
-    marginTop: 4,
-    alignSelf: 'flex-end',
+  },
+  statusGlyph: {
+    fontSize: FontSize.xs,
+    fontWeight: '700',
   },
 });

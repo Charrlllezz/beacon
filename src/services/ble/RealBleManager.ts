@@ -7,13 +7,25 @@ import {
   TO_RADIO_UUID,
   FROM_NUM_UUID,
 } from './ConnectionState';
-import { decodeFromRadio, encodeToRadio, encodeWantConfig } from './MeshtasticCodec';
+import { decodeFromRadio, encodeToRadio, encodeWantConfig, encodeSetChannel, encodeBeginEditSettings, encodeCommitEditSettings, encodeDisableChannel, encodeSetLoraConfig, encodeReboot, encodeHeartbeat, encodeSetOwner, encodeFactoryReset, encodeSetPositionConfig } from './MeshtasticCodec';
 import { useDeviceStore } from '../../store/useDeviceStore';
 
 export type PacketCallback = (fromRadio: FromRadio) => void;
-export type StatusCallback = (status: 'connected' | 'disconnected') => void;
+export type StatusCallback = (status: 'connected' | 'disconnected' | 'reconnecting') => void;
 
 const CONFIG_ID = 42;
+
+/**
+ * Thrown by writeAdmin when the BLE link drops partway through a provisioning
+ * sequence (setChannel etc.). Callers should treat it as "retry the whole
+ * transaction" rather than assuming a partial config landed.
+ */
+export class ProvisioningInterruptedError extends Error {
+  constructor() {
+    super('BLE connection lost during provisioning');
+    this.name = 'ProvisioningInterruptedError';
+  }
+}
 
 export class RealBleManager {
   private manager: BleManager;
@@ -23,7 +35,12 @@ export class RealBleManager {
   private notifySub: Subscription | null = null;
   private disconnectSub: Subscription | null = null;
   private isConnected = false;
+  private isConnecting = false;
+  private isReading = false;
+  private aborted = false;
+  private configDrainComplete = false;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private lastDeviceId: string | null = null;
   private reconnectAttempts = 0;
@@ -47,7 +64,7 @@ export class RealBleManager {
     this.packetCallbacks.forEach(cb => cb(fromRadio));
   }
 
-  private emitStatus(status: 'connected' | 'disconnected'): void {
+  private emitStatus(status: 'connected' | 'disconnected' | 'reconnecting'): void {
     this.statusCallbacks.forEach(cb => cb(status));
   }
 
@@ -60,63 +77,122 @@ export class RealBleManager {
     return new Promise((resolve) => {
       const found: { id: string; name: string }[] = [];
       const seen = new Set<string>();
+      let resolved = false;
+      const finish = () => {
+        if (resolved) return;
+        resolved = true;
+        this.manager.stopDeviceScan();
+        resolve(found);
+      };
 
+      // Scan ALL devices (no UUID filter) and match on name. Some Meshtastic
+      // firmware puts the service UUID only in the scan response, which iOS
+      // can miss on 5-second filtered scans. Name-based filtering is more
+      // reliable across firmware variants.
       this.manager.startDeviceScan(
-        [MESHTASTIC_SERVICE_UUID],
+        null,
         { allowDuplicates: false },
         (error, device) => {
           if (error) {
-            console.warn('BLE scan error:', error);
+            // Permission denied, BLE off, or platform error — resolve early
+            // instead of burning the full 8s timer.
+            console.warn('BLE scan error:', error.message);
+            finish();
             return;
           }
-          if (device && !seen.has(device.id)) {
-            seen.add(device.id);
-            found.push({
-              id: device.id,
-              name: device.name ?? device.localName ?? `Meshtastic_${device.id.slice(-4)}`,
-            });
-          }
+          if (!device || seen.has(device.id)) return;
+
+          const name = device.name ?? device.localName ?? '';
+          const isMeshtastic =
+            name.toLowerCase().startsWith('meshtastic') ||
+            name.toLowerCase().startsWith('mshtst') ||
+            (device.serviceUUIDs?.some(u => u.toLowerCase() === MESHTASTIC_SERVICE_UUID) ?? false);
+
+          if (!isMeshtastic) return;
+
+          seen.add(device.id);
+          found.push({
+            id: device.id,
+            name: name || `Meshtastic_${device.id.slice(-4)}`,
+          });
         },
       );
 
-      // Stop scanning after 5 seconds
-      setTimeout(() => {
-        this.manager.stopDeviceScan();
-        resolve(found);
-      }, 5000);
+      // Stop scanning after 8 seconds (was 5s — longer window catches
+      // devices that advertise intermittently or had late boots)
+      setTimeout(finish, 8000);
     });
   }
 
   async connect(deviceId: string): Promise<void> {
+    // Guard against overlapping connect calls. A manual Reconnect tap during
+    // an auto-retry used to tangle two in-flight connects.
+    if (this.isConnecting) {
+      console.warn('connect() already in flight — ignoring duplicate call');
+      return;
+    }
+    this.isConnecting = true;
+    this.aborted = false;
     try {
-      this.emitStatus('disconnected');
-
-      // Connect to device
+      // Connect to device. No MTU negotiation anywhere — bundled requestMTU
+      // caused 1-second connect failures on iPhone 13 (older BLE stack),
+      // and even post-connect requestMTU caused GATT session teardown ~2
+      // seconds in. Meshtastic works fine on default MTU (23 bytes) since
+      // our writes are all <200 bytes and BLE fragments transparently.
       const device = await this.manager.connectToDevice(deviceId, {
-        requestMTU: 512,
-        timeout: 10000,
+        timeout: 20000,
       });
+
+      // If disconnect()/background fired while connectToDevice was in flight,
+      // abandon this connection instead of re-acquiring the single BLE slot
+      // (the T-Echo holds only one central; the user wanted it released).
+      if (this.aborted) {
+        this.manager.cancelDeviceConnection(deviceId).catch(() => {});
+        this.isConnecting = false;
+        return;
+      }
 
       // Discover services
       await device.discoverAllServicesAndCharacteristics();
       this.device = device;
+
+      // Remove any leftover subscriptions from a prior connect cycle before
+      // registering new ones — otherwise orphan handlers accumulate and each
+      // real disconnect fires multiple racing reconnect attempts.
+      this.notifySub?.remove();
+      this.disconnectSub?.remove();
+      this.notifySub = null;
+      this.disconnectSub = null;
 
       // Listen for disconnects and auto-reconnect
       this.lastDeviceId = deviceId;
       this.reconnectAttempts = 0;
       this.disconnectSub = this.manager.onDeviceDisconnected(deviceId, () => {
         this.isConnected = false;
-        this.emitStatus('disconnected');
         this.stopPolling();
-        this.attemptReconnect();
+        this.stopHeartbeat();
+        // Emit 'reconnecting' (not 'disconnected') so the UI shows the retry
+        // loop is active. Only flip to 'disconnected' once attempts exhaust.
+        if (this.lastDeviceId && this.reconnectAttempts < this.maxReconnectAttempts) {
+          this.emitStatus('reconnecting');
+          this.attemptReconnect();
+        } else {
+          this.emitStatus('disconnected');
+        }
       });
 
-      // Subscribe to fromNum notifications (signals new data available)
+      // Subscribe to fromNum notifications (signals new data available).
+      // Surface errors — a wrong UUID or unsupported characteristic used to
+      // fail silently because this callback ignored the error arg, which
+      // made packets arrive only via the 5s backup poll.
       this.notifySub = device.monitorCharacteristicForService(
         MESHTASTIC_SERVICE_UUID,
         FROM_NUM_UUID,
-        () => {
-          // New data available — read fromRadio
+        (error, _char) => {
+          if (error) {
+            console.warn('FROM_NUM monitor error:', error.message);
+            return;
+          }
           this.readFromRadio();
         },
       );
@@ -136,15 +212,76 @@ export class RealBleManager {
       // Start polling fromRadio to drain initial config
       await this.drainFromRadio();
 
+      // If the link dropped during the (up-to-10s) drain, don't start timers or
+      // hold a 'connected' claim — let the reconnect path take over cleanly.
+      if (!this.isConnected || this.aborted) {
+        this.isConnecting = false;
+        return;
+      }
+
       // Poll periodically for any missed notifications
       this.startPolling();
 
+      // Start heartbeat to keep firmware from timing out the phone BLE link
+      this.startHeartbeat();
+
+      this.isConnecting = false;
     } catch (error) {
       console.error('BLE connect error:', error);
       this.isConnected = false;
+      this.isConnecting = false;
       this.emitStatus('disconnected');
       throw error;
     }
+  }
+
+  private async writeAdmin(bytes: Uint8Array): Promise<void> {
+    // Provisioning is a multi-write sequence; if the link drops partway the
+    // remaining writes used to hit a stale `this.device!` and reject opaquely.
+    // Fail fast with a typed error so callers can retry the WHOLE transaction
+    // (and reprovision keeps NEEDS_REPROVISION set until it fully lands).
+    if (!this.device || !this.isConnected) {
+      throw new ProvisioningInterruptedError();
+    }
+    await this.device.writeCharacteristicWithResponseForService(
+      MESHTASTIC_SERVICE_UUID,
+      TO_RADIO_UUID,
+      this.uint8ToBase64(bytes),
+    );
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  /**
+   * Full device configuration: sets the RNDVU channel, disables stale channels,
+   * and enforces LoRa region/modem so every device ends up in the same state
+   * regardless of prior configuration.
+   */
+  async setChannel(channelIndex: number, channelName: string, psk: Uint8Array, role = 1): Promise<void> {
+    if (!this.device || !this.isConnected) throw new Error('Not connected');
+
+    const myNodeNum = useDeviceStore.getState().myNodeNum ?? 0;
+    if (myNodeNum === 0) throw new Error('Node number not yet available');
+
+    // 1. Begin edit transaction
+    await this.writeAdmin(encodeBeginEditSettings(myNodeNum));
+
+    // 2. Set channel 0 as RNDVU PRIMARY
+    await this.writeAdmin(encodeSetChannel(myNodeNum, channelIndex, channelName, psk, role));
+
+    // 3. Disable channels 1-7 to clear any prior config
+    for (let i = 1; i <= 7; i++) {
+      await this.writeAdmin(encodeDisableChannel(myNodeNum, i));
+    }
+
+    // 4. Set LoRa region to US to ensure radio compatibility
+    await this.writeAdmin(encodeSetLoraConfig(myNodeNum, 1)); // RegionCode.US = 1
+
+    // 5. Commit edit transaction (persists to flash)
+    await this.writeAdmin(encodeCommitEditSettings(myNodeNum));
+
+    // 6. Reboot device so config changes take effect
+    //    Device will disconnect and auto-reconnect picks it back up
+    await this.writeAdmin(encodeReboot(myNodeNum, 2));
   }
 
   async sendText(text: string, channelIndex = 0): Promise<void> {
@@ -161,9 +298,68 @@ export class RealBleManager {
     );
   }
 
+  /**
+   * Writes the user's display name to the T-Echo so NodeInfo broadcasts
+   * carry the RNDVU name, not the factory default. Without this, peers see
+   * this node as "Unknown" in their Crew tab.
+   */
+  async setOwner(longName: string, shortName: string): Promise<void> {
+    if (!this.device || !this.isConnected) throw new Error('Not connected');
+
+    const myNodeNum = useDeviceStore.getState().myNodeNum ?? 0;
+    if (myNodeNum === 0) throw new Error('Node number not yet available');
+
+    const bytes = encodeSetOwner(myNodeNum, longName, shortName);
+    await this.device.writeCharacteristicWithResponseForService(
+      MESHTASTIC_SERVICE_UUID,
+      TO_RADIO_UUID,
+      this.uint8ToBase64(bytes),
+    );
+  }
+
+  /**
+   * Factory-reset the T-Echo. Wipes all config + nodeDB + keypair. Device
+   * reboots; our auto-reconnect picks it back up, then the caller should
+   * re-run the provisioning path (setChannel + setOwner) to rehydrate.
+   */
+  async factoryReset(): Promise<void> {
+    if (!this.device || !this.isConnected) throw new Error('Not connected');
+    const myNodeNum = useDeviceStore.getState().myNodeNum ?? 0;
+    if (myNodeNum === 0) throw new Error('Node number not yet available');
+    await this.writeAdmin(encodeFactoryReset(myNodeNum));
+  }
+
+  /**
+   * Toggle the T-Echo's autonomous position broadcasts for privacy. When
+   * disabled, firmware stops sending POSITION_APP packets to the mesh, so
+   * peers no longer see the user on the map. Phone-side myLocation (GPS via
+   * expo-location) is unaffected.
+   *
+   * UNTESTED on real hardware. The PositionConfig write pattern mirrors the
+   * LoRaConfig fix — all fields explicit to avoid proto3-default clobbering.
+   * Verify on a single device before wiring to UI.
+   */
+  async setLocationSharing(enabled: boolean): Promise<void> {
+    if (!this.device || !this.isConnected) throw new Error('Not connected');
+    const myNodeNum = useDeviceStore.getState().myNodeNum ?? 0;
+    if (myNodeNum === 0) throw new Error('Node number not yet available');
+    // When sharing: 900s (15 min) broadcasts + GPS enabled.
+    // When off: GPS hardware disabled entirely; firmware stops position
+    // broadcasts because there's nothing to report.
+    const broadcastSecs = enabled ? 900 : 0;
+    const gpsMode = enabled ? 1 /* ENABLED */ : 0 /* DISABLED */;
+    await this.writeAdmin(encodeSetPositionConfig(myNodeNum, broadcastSecs, gpsMode));
+  }
+
   disconnect(): void {
+    // Abort any in-flight connect() so a connectToDevice that resolves after
+    // this call doesn't silently re-acquire the single BLE slot, and clear
+    // isConnecting so a pending reconnect attempt isn't blocked.
+    this.aborted = true;
+    this.isConnecting = false;
     this.cancelReconnect();
     this.stopPolling();
+    this.stopHeartbeat();
     this.notifySub?.remove();
     this.disconnectSub?.remove();
     this.notifySub = null;
@@ -180,14 +376,25 @@ export class RealBleManager {
   }
 
   private attemptReconnect(): void {
-    if (!this.lastDeviceId || this.reconnectAttempts >= this.maxReconnectAttempts) return;
+    if (!this.lastDeviceId || this.reconnectAttempts >= this.maxReconnectAttempts) {
+      this.emitStatus('disconnected');
+      return;
+    }
 
     this.reconnectAttempts++;
-    // Exponential backoff: 2s, 4s, 8s, 16s, capped at 30s
-    const delay = Math.min(2000 * Math.pow(2, this.reconnectAttempts - 1), 30000);
+    // Exponential backoff: 500ms, 1s, 2s, 4s, 8s, capped at 15s. Faster first
+    // retry so transient RF drops recover quickly.
+    const delay = Math.min(500 * Math.pow(2, this.reconnectAttempts - 1), 15000);
 
     this.reconnectTimer = setTimeout(async () => {
       if (this.isConnected || !this.lastDeviceId) return;
+      // A connect() is still parked (e.g. mid config-drain). This was the only
+      // scheduled retry, so re-arm shortly instead of silently giving up —
+      // otherwise a disconnect during connect wedges the UI on 'reconnecting'.
+      if (this.isConnecting) {
+        this.reconnectTimer = setTimeout(() => this.attemptReconnect(), 1000);
+        return;
+      }
       try {
         await this.connect(this.lastDeviceId);
       } catch {
@@ -206,6 +413,12 @@ export class RealBleManager {
 
   private async readFromRadio(): Promise<boolean> {
     if (!this.device || !this.isConnected) return false;
+    // Serialize reads: the FROM_NUM notify, the 5s poll, and drainFromRadio can
+    // all call this concurrently, and each FROM_RADIO read destructively pops
+    // one frame from the firmware FIFO. A skipped concurrent read is harmless —
+    // the in-flight read drains that frame and the next poll/notify continues.
+    if (this.isReading) return false;
+    this.isReading = true;
 
     try {
       const char = await this.device.readCharacteristicForService(
@@ -219,24 +432,42 @@ export class RealBleManager {
       if (bytes.length === 0) return false;
 
       const fromRadio = decodeFromRadio(bytes);
+      // Firmware signals end-of-config-drain via configCompleteId. Capture it
+      // here before emitting so drainFromRadio can stop precisely.
+      if (fromRadio.configCompleteId !== undefined) {
+        this.configDrainComplete = true;
+      }
       this.emitPacket(fromRadio);
       return true;
     } catch (error) {
       console.warn('readFromRadio error:', error);
       return false;
+    } finally {
+      this.isReading = false;
     }
   }
 
   private async drainFromRadio(): Promise<void> {
-    // Keep reading until we get an empty response, with a 3s timeout
-    let hasMore = true;
-    let reads = 0;
+    // Drain until firmware sends configCompleteId (the canonical end signal).
+    // 10s hard cap as a safety net for stuck firmware. 200ms pacing between
+    // reads avoids hammering older iOS BLE stacks (iPhone 13-era) which can
+    // tear down the GATT session under load.
+    this.configDrainComplete = false;
     const startTime = Date.now();
-    while (hasMore && reads < 100 && Date.now() - startTime < 3000) {
-      hasMore = await this.readFromRadio();
-      reads++;
-      if (hasMore) {
-        await new Promise(r => setTimeout(r, 50));
+    const TIMEOUT_MS = 10000;
+    const PACE_MS = 200;
+    while (!this.configDrainComplete && Date.now() - startTime < TIMEOUT_MS) {
+      // Bail immediately if the link dropped mid-drain — otherwise this loop
+      // spins to its full 10s timeout while connect() holds isConnecting=true,
+      // blocking the reconnect attempt and wedging the UI on 'reconnecting'.
+      if (!this.isConnected) break;
+      const hasMore = await this.readFromRadio();
+      if (!hasMore && !this.configDrainComplete) {
+        // Empty read before configComplete — firmware is still preparing the
+        // next batch. Back off briefly and try again.
+        await new Promise(r => setTimeout(r, PACE_MS));
+      } else if (hasMore) {
+        await new Promise(r => setTimeout(r, PACE_MS));
       }
     }
   }
@@ -252,6 +483,32 @@ export class RealBleManager {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
+    }
+  }
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    // Write a heartbeat every 60s so the firmware's phone_timeout_secs
+    // (default ~15 minutes) doesn't drop the BLE link when the app is idle.
+    this.heartbeatTimer = setInterval(async () => {
+      if (!this.device || !this.isConnected) return;
+      try {
+        const bytes = encodeHeartbeat();
+        await this.device.writeCharacteristicWithResponseForService(
+          MESHTASTIC_SERVICE_UUID,
+          TO_RADIO_UUID,
+          this.uint8ToBase64(bytes),
+        );
+      } catch (e) {
+        console.warn('Heartbeat write failed:', e);
+      }
+    }, 60000);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
   }
 
