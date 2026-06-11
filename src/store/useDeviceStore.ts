@@ -30,6 +30,9 @@ interface DeviceState {
   channelName: string;
   channelIndex: number | null;
   lastPacketAt: number | null;
+  // Whether the Device/Connection troubleshooting sheet is open. Opened from the
+  // tappable ConnectionBar and the header gear; rendered once at the app root.
+  deviceSheetOpen: boolean;
 
   setStatus: (status: ConnectionStatus) => void;
   setConnectedDevice: (id: string, name: string) => void;
@@ -40,6 +43,7 @@ interface DeviceState {
   setChannelName: (name: string) => void;
   setChannelIndex: (idx: number) => void;
   setLastPacketAt: (ts: number) => void;
+  setDeviceSheetOpen: (open: boolean) => void;
   disconnect: () => void;
   saveLastDevice: () => void;
   loadLastDevice: () => Promise<{ id: string; name: string } | null>;
@@ -58,6 +62,7 @@ export const useDeviceStore = create<DeviceState>((set) => ({
   channelName: 'RNDVU',
   channelIndex: null,
   lastPacketAt: null,
+  deviceSheetOpen: false,
 
   setStatus: (status) => set({ status }),
   setConnectedDevice: (id, name) =>
@@ -80,6 +85,7 @@ export const useDeviceStore = create<DeviceState>((set) => ({
   setChannelName: (channelName) => set({ channelName }),
   setChannelIndex: (channelIndex) => set({ channelIndex }),
   setLastPacketAt: (lastPacketAt) => set({ lastPacketAt }),
+  setDeviceSheetOpen: (deviceSheetOpen) => set({ deviceSheetOpen }),
   disconnect: () =>
     set({
       status: 'disconnected',

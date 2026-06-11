@@ -1,32 +1,11 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import { Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useDeviceStore } from '../../store/useDeviceStore';
-import { bleService } from '../../services/ble/BleManager';
 import { Colors, FontSize } from '../../config/theme';
 
 export default function ConnectionBar() {
   const status = useDeviceStore(s => s.status);
-  const connectedDeviceId = useDeviceStore(s => s.connectedDeviceId);
-
-  const handleReconnect = useCallback(async () => {
-    const lastDevice = await useDeviceStore.getState().loadLastDevice();
-    const deviceId = connectedDeviceId ?? lastDevice?.id;
-    if (!deviceId) return;
-
-    // Clear any orphan native state / pending auto-reconnect timers before
-    // reconnecting, so connectToDevice doesn't race with the internal retry loop.
-    // disconnect() emits 'disconnected' via onStatus, so we set 'reconnecting'
-    // AFTER it to avoid the state being clobbered.
-    bleService.disconnect();
-    useDeviceStore.getState().setStatus('reconnecting');
-
-    try {
-      await bleService.connect(deviceId);
-      // connect() emits 'connected' via onStatus on success; no need to set here
-    } catch {
-      useDeviceStore.getState().setStatus('disconnected');
-    }
-  }, [connectedDeviceId]);
+  const openDeviceSheet = () => useDeviceStore.getState().setDeviceSheetOpen(true);
 
   if (status === 'connected') return null;
 
@@ -41,6 +20,9 @@ export default function ConnectionBar() {
 
   const { label, color } = config[status] ?? config.disconnected;
 
+  // The whole bar opens the Device/Connection sheet, where the big Reconnect
+  // button and the troubleshooting actions live. Tapping the problem indicator
+  // is the most natural way into the fix.
   return (
     <TouchableOpacity
       style={[
@@ -50,15 +32,17 @@ export default function ConnectionBar() {
           borderBottomColor: color + (status === 'disconnected' ? '88' : '44'),
         },
       ]}
-      onPress={status === 'disconnected' ? handleReconnect : undefined}
-      activeOpacity={status === 'disconnected' ? 0.7 : 1}
+      onPress={openDeviceSheet}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel="Open device and connection troubleshooting"
     >
       {isActive && (
         <ActivityIndicator size="small" color={color} style={styles.spinner} />
       )}
       <Text style={[styles.text, { color }]}>
         {label}
-        {status === 'disconnected' && ' — Tap to reconnect'}
+        {status === 'disconnected' && ' — Tap to fix'}
       </Text>
     </TouchableOpacity>
   );
