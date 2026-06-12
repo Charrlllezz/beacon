@@ -42,6 +42,15 @@ export function routeFromRadio(fromRadio: FromRadio, myNodeNum: number | null): 
     const name = fromRadio.channel.settings?.name;
     if (name) useDeviceStore.getState().setChannelName(name);
     useDeviceStore.getState().setChannelIndex(fromRadio.channel.index);
+    if (fromRadio.channel.keyFingerprint) {
+      useDeviceStore.getState().setChannelKeyFingerprint(fromRadio.channel.keyFingerprint);
+    }
+  }
+
+  // LoRa region from the device config drain — surfaced in the Device sheet so a
+  // region-unset radio (which won't transmit) is visible instead of a silent fail.
+  if (fromRadio.config?.lora?.region !== undefined) {
+    useDeviceStore.getState().setRegion(fromRadio.config.lora.region);
   }
 
   // Device metadata (firmware version, hw model, PKC capability) arrives once
@@ -67,7 +76,9 @@ export function routeFromRadio(fromRadio: FromRadio, myNodeNum: number | null): 
       lastHeard: nodeInfo.lastHeard,
       batteryLevel: nodeInfo.deviceMetrics?.batteryLevel,
       isSelf,
-      isOnline: true,
+      // Let isOnline be derived from lastHeard (in upsertMember) instead of
+      // force-true — a node from the radio's DB dump heard hours ago is NOT
+      // online just because we received its stored NodeInfo on connect.
     });
 
     if (nodeInfo.snr !== undefined) {

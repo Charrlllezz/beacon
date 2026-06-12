@@ -73,7 +73,7 @@ export interface FromRadio {
   packet?: MeshPacket;
   myInfo?: MyNodeInfo;
   nodeInfo?: NodeInfo;
-  config?: unknown;
+  config?: DeviceConfig;
   logRecord?: unknown;
   configCompleteId?: number;
   rebooted?: boolean;
@@ -93,6 +93,15 @@ export interface Channel {
   index: number;
   settings?: ChannelSettings;
   role?: number; // DISABLED=0, PRIMARY=1, SECONDARY=2
+  // Short non-reversible hash of the channel PSK. Lets two devices confirm they
+  // share the same key at a glance without ever exposing the key itself.
+  keyFingerprint?: string;
+}
+
+export interface DeviceConfig {
+  lora?: {
+    region?: number; // RegionCode enum: 0=UNSET, 1=US, 2=EU_433, 3=EU_868, ...
+  };
 }
 
 export interface ChannelSettings {
