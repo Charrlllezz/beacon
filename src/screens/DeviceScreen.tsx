@@ -6,8 +6,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
 import { useDeviceStore } from '../store/useDeviceStore';
+import { useCrewStore } from '../store/useCrewStore';
 import { bleService } from '../services/ble/BleManager';
-import { regionName } from '../services/ble/MeshtasticCodec';
+import { regionName, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK } from '../services/ble/MeshtasticCodec';
 import { timeAgo } from '../utils/time';
 
 const STATUS_META: Record<string, { label: string; color: string; hint: string }> = {
@@ -124,6 +125,40 @@ export default function DeviceScreen() {
     );
   }
 
+  async function handleReprovision() {
+    if (status !== 'connected' || !myNodeNum) {
+      Alert.alert('Not connected', 'Connect to your T-Echo first, then re-provision.');
+      return;
+    }
+    Alert.alert(
+      'Re-provision device?',
+      'Re-applies the RNDVU channel, encryption key, US region, and your name to this radio. It reboots and reconnects (~15-20s). Use this if Region shows UNSET or the channel/key looks wrong.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Re-provision',
+          onPress: async () => {
+            try {
+              const saved = await useCrewStore.getState().loadDisplayName();
+              if (saved) {
+                try { await bleService.setOwner(saved.longName, saved.shortName); }
+                catch (e) { console.warn('setOwner during re-provision failed:', e); }
+              }
+              await bleService.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK, 1);
+              Alert.alert('Re-provisioning', 'Your radio is rebooting and will reconnect with the RNDVU channel + US region. Watch the Region field above flip to US.');
+            } catch (e) {
+              console.warn('re-provision failed:', e);
+              // Leave the auto-retry flag set so the App reprovision listener
+              // finishes the job on the next reconnect (matches onboarding).
+              try { await AsyncStorage.setItem('rndvu_needs_reprovision', '1'); } catch {}
+              Alert.alert('Re-provision Failed', "Couldn't finish re-provisioning. RNDVU will retry automatically when the device reconnects.");
+            }
+          },
+        },
+      ],
+    );
+  }
+
   const nodeIdHex = myNodeNum ? '!' + myNodeNum.toString(16).padStart(8, '0') : '—';
   const lastHeard = lastPacketAt ? timeAgo(Math.floor(lastPacketAt / 1000)) : 'never';
   // region 0 / null = UNSET → the radio receives but won't transmit. Flag it.
@@ -162,6 +197,11 @@ export default function DeviceScreen() {
           )}
 
           <Text style={styles.sectionTitle}>TROUBLESHOOTING</Text>
+
+          <TouchableOpacity style={styles.action} onPress={handleReprovision}>
+            <Text style={styles.actionTitle}>{regionBad ? '⚠ Re-provision Device' : 'Re-provision Device'}</Text>
+            <Text style={styles.actionSub}>Re-apply the RNDVU channel, key, US region, and your name. Fixes an UNSET region or wrong channel/key — no factory reset or re-pair needed.</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity style={styles.action} onPress={handleRelease}>
             <Text style={styles.actionTitle}>Release Device</Text>

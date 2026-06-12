@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ViewToken } from 'react-native';
+import { View, Text, StyleSheet, FlatList } from 'react-native';
 import { Colors, FontSize } from '../../config/theme';
 
 const ITEM_HEIGHT = 44;
@@ -16,29 +16,31 @@ interface Props {
 export default function ScrollPicker({ items, selectedIndex, onSelect, width = 54, color = Colors.warning }: Props) {
   const flatListRef = useRef<FlatList>(null);
   const isScrolling = useRef(false);
+  // The index the user last landed on via scroll, so the re-center effect below
+  // doesn't fight a user-driven selection (which would snap/kill a fling).
+  const lastUserIndex = useRef<number | null>(null);
 
   // Pad with empty items so the selected item can be centered
   const padded = ['', ...items, ''];
 
   useEffect(() => {
-    if (!isScrolling.current) {
+    // Only re-center on a PROGRAMMATIC selectedIndex change (parent set the
+    // value). When the change came from the user's own scroll the list is
+    // already at the right offset, and re-scrolling it would snap/kill a fling.
+    if (!isScrolling.current && selectedIndex !== lastUserIndex.current) {
       flatListRef.current?.scrollToOffset({ offset: selectedIndex * ITEM_HEIGHT, animated: false });
     }
   }, [selectedIndex]);
 
-  const handleViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-    // The center item (accounting for padding) is the selected one
-    const center = viewableItems.find(v => v.index === selectedIndex + 1);
-    // Don't update during programmatic scrolls
-  }, [selectedIndex]);
-
   // iOS fires onMomentumScrollEnd ONLY after a fling. A slow drag-and-release —
   // how you carefully dial in a time — ends with onScrollEndDrag and no momentum
-  // event, so the selection never registered. Handle both paths.
+  // event, so the selection never registered. Handle both paths. Record the
+  // user-chosen index so the re-center effect above leaves the fling alone.
   const selectFromOffset = useCallback((offsetY: number) => {
     isScrolling.current = false;
     const index = Math.round(offsetY / ITEM_HEIGHT);
     const clamped = Math.max(0, Math.min(items.length - 1, index));
+    lastUserIndex.current = clamped;
     if (clamped !== selectedIndex) onSelect(clamped);
   }, [items.length, selectedIndex, onSelect]);
 

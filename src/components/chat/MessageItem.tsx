@@ -14,6 +14,11 @@ interface Props {
 
 const MessageItem = memo(({ item, myNodeNum }: Props) => {
   const isMine = item.fromNodeId === myNodeNum;
+  // TEMP DIAG (remove once structured-message render bug confirmed fixed):
+  // pairs with the PacketRouter log — if 'rx parsed as rally' shows but
+  // '[RNDVU-DIAG] render rally' does NOT, the message is added but not rendered
+  // (a list/render issue); if both show but it's blank, it's rendering invisibly.
+  if (item.type !== 'text') console.warn('[RNDVU-DIAG] render', item.type, item.id);
   switch (item.type) {
     case 'heading': return <HeadingCard message={item} isMine={isMine} />;
     case 'rally':   return <RallyCard   message={item} isMine={isMine} />;

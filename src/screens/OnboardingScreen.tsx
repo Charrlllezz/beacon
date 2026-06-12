@@ -105,7 +105,15 @@ export default function OnboardingScreen({ onComplete }: Props) {
         try {
           await bleService.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK, 1);
         } catch (e) {
-          console.warn('setChannel on onboarding failed (non-fatal):', e);
+          console.warn('setChannel on onboarding failed:', e);
+          // Don't silently proceed with a half-provisioned radio. Flag it so the
+          // App reprovision listener retries on the next reconnect, and tell the
+          // user the fallback (the Re-provision button in the gear menu).
+          try { await AsyncStorage.setItem('rndvu_needs_reprovision', '1'); } catch {}
+          Alert.alert(
+            "Setup didn't finish",
+            "Your device connected but channel setup didn't complete. RNDVU will retry automatically when it reconnects. If messages won't send, open the gear menu (top-right) and tap Re-provision Device.",
+          );
         }
       }
 
