@@ -278,7 +278,6 @@ export default function ChatScreen() {
             contentContainerStyle={styles.messageList}
             onContentSizeChange={scrollToBottom}
             onLayout={scrollToBottom}
-            removeClippedSubviews
             maxToRenderPerBatch={20}
             windowSize={10}
             keyboardDismissMode="on-drag"
