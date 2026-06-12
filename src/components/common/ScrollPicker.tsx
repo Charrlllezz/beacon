@@ -32,15 +32,23 @@ export default function ScrollPicker({ items, selectedIndex, onSelect, width = 5
     // Don't update during programmatic scrolls
   }, [selectedIndex]);
 
-  const handleMomentumScrollEnd = useCallback((e: any) => {
+  // iOS fires onMomentumScrollEnd ONLY after a fling. A slow drag-and-release —
+  // how you carefully dial in a time — ends with onScrollEndDrag and no momentum
+  // event, so the selection never registered. Handle both paths.
+  const selectFromOffset = useCallback((offsetY: number) => {
     isScrolling.current = false;
-    const offsetY = e.nativeEvent.contentOffset.y;
     const index = Math.round(offsetY / ITEM_HEIGHT);
     const clamped = Math.max(0, Math.min(items.length - 1, index));
-    if (clamped !== selectedIndex) {
-      onSelect(clamped);
-    }
+    if (clamped !== selectedIndex) onSelect(clamped);
   }, [items.length, selectedIndex, onSelect]);
+
+  const handleMomentumScrollEnd = useCallback((e: any) => {
+    selectFromOffset(e.nativeEvent.contentOffset.y);
+  }, [selectFromOffset]);
+
+  const handleScrollEndDrag = useCallback((e: any) => {
+    selectFromOffset(e.nativeEvent.contentOffset.y);
+  }, [selectFromOffset]);
 
   const handleScrollBegin = useCallback(() => {
     isScrolling.current = true;
@@ -59,6 +67,7 @@ export default function ScrollPicker({ items, selectedIndex, onSelect, width = 5
         decelerationRate="fast"
         onScrollBeginDrag={handleScrollBegin}
         onMomentumScrollEnd={handleMomentumScrollEnd}
+        onScrollEndDrag={handleScrollEndDrag}
         getItemLayout={(_, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
         renderItem={({ item, index }) => {
           const dataIndex = index - 1; // account for top padding
