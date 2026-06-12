@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
 import { useDeviceStore } from '../store/useDeviceStore';
 import { bleService } from '../services/ble/BleManager';
+import { regionName } from '../services/ble/MeshtasticCodec';
 import { timeAgo } from '../utils/time';
 
 const STATUS_META: Record<string, { label: string; color: string; hint: string }> = {
@@ -34,6 +35,8 @@ export default function DeviceScreen() {
   const hwModel = useDeviceStore(s => s.hwModel);
   const hasPKC = useDeviceStore(s => s.hasPKC);
   const lastPacketAt = useDeviceStore(s => s.lastPacketAt);
+  const region = useDeviceStore(s => s.region);
+  const keyFingerprint = useDeviceStore(s => s.channelKeyFingerprint);
   const [busy, setBusy] = useState(false);
 
   const close = () => useDeviceStore.getState().setDeviceSheetOpen(false);
@@ -123,6 +126,8 @@ export default function DeviceScreen() {
 
   const nodeIdHex = myNodeNum ? '!' + myNodeNum.toString(16).padStart(8, '0') : '—';
   const lastHeard = lastPacketAt ? timeAgo(Math.floor(lastPacketAt / 1000)) : 'never';
+  // region 0 / null = UNSET → the radio receives but won't transmit. Flag it.
+  const regionBad = region == null || region === 0;
 
   return (
     <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
@@ -175,8 +180,15 @@ export default function DeviceScreen() {
 
           <Text style={styles.sectionTitle}>DIAGNOSTICS</Text>
           <View style={styles.diag}>
-            <View style={styles.kv}><Text style={styles.k}>Node ID</Text><Text style={styles.vMono}>{nodeIdHex}</Text></View>
+            <View style={styles.kv}>
+              <Text style={styles.k}>Region</Text>
+              <Text style={[styles.vMono, regionBad && { color: Colors.error }]}>
+                {regionName(region)}{regionBad ? " — won't transmit" : ''}
+              </Text>
+            </View>
+            <View style={styles.kv}><Text style={styles.k}>Channel key</Text><Text style={styles.vMono}>{keyFingerprint ?? '—'}</Text></View>
             <View style={styles.kv}><Text style={styles.k}>Channel index</Text><Text style={styles.vMono}>{channelIndex ?? '—'}</Text></View>
+            <View style={styles.kv}><Text style={styles.k}>Node ID</Text><Text style={styles.vMono}>{nodeIdHex}</Text></View>
             <View style={styles.kv}><Text style={styles.k}>Firmware</Text><Text style={styles.vMono}>{firmwareVersion ?? '—'}</Text></View>
             <View style={styles.kv}><Text style={styles.k}>HW model</Text><Text style={styles.vMono}>{hwModel ?? '—'}</Text></View>
             <View style={styles.kv}><Text style={styles.k}>PKC</Text><Text style={styles.vMono}>{hasPKC == null ? '—' : hasPKC ? 'yes' : 'no'}</Text></View>
