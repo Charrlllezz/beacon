@@ -6,7 +6,10 @@ import { isOnline } from '../utils/time';
 
 export type CrewSortMode = 'alpha' | 'distance';
 
-const CREW_STORAGE_KEY = 'rndvu_crew_members';
+// v2: bumped when crew membership stopped being seeded from the radio's entire
+// node DB. The old key holds a bloated list (every Meshtastic node the radio
+// ever heard) from before the fix; abandoning it clears that on upgrade.
+const CREW_STORAGE_KEY = 'rndvu_crew_members_v2';
 const PERSIST_DEBOUNCE_MS = 2000;
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -59,6 +62,14 @@ export const useCrewStore = create<CrewState>((set, get) => ({
   upsertMember: (partial) =>
     set((state) => {
       const existing = state.crewMembers[partial.nodeId];
+      // Don't create a NEW crew member from stale data. On connect the radio
+      // streams its ENTIRE node DB (every Meshtastic node it has ever heard) as
+      // NodeInfo; without this gate, all of them became "crew" (the 35+ random
+      // nodes). Only create when the node was heard recently (live RNDVU
+      // traffic). Already-known members are always enriched/updated below.
+      if (!existing && partial.lastHeard !== undefined && !isOnline(partial.lastHeard)) {
+        return state;
+      }
       return {
         crewMembers: {
           ...state.crewMembers,

@@ -30,6 +30,8 @@ interface DeviceState {
   channelName: string;
   channelIndex: number | null;
   lastPacketAt: number | null;
+  region: number | null;               // LoRa RegionCode from the device config
+  channelKeyFingerprint: string | null; // short hash of the channel PSK
   // Whether the Device/Connection troubleshooting sheet is open. Opened from the
   // tappable ConnectionBar and the header gear; rendered once at the app root.
   deviceSheetOpen: boolean;
@@ -43,6 +45,8 @@ interface DeviceState {
   setChannelName: (name: string) => void;
   setChannelIndex: (idx: number) => void;
   setLastPacketAt: (ts: number) => void;
+  setRegion: (region: number | null) => void;
+  setChannelKeyFingerprint: (fp: string | null) => void;
   setDeviceSheetOpen: (open: boolean) => void;
   disconnect: () => void;
   saveLastDevice: () => void;
@@ -62,6 +66,8 @@ export const useDeviceStore = create<DeviceState>((set) => ({
   channelName: 'RNDVU',
   channelIndex: null,
   lastPacketAt: null,
+  region: null,
+  channelKeyFingerprint: null,
   deviceSheetOpen: false,
 
   setStatus: (status) => set({ status }),
@@ -85,6 +91,8 @@ export const useDeviceStore = create<DeviceState>((set) => ({
   setChannelName: (channelName) => set({ channelName }),
   setChannelIndex: (channelIndex) => set({ channelIndex }),
   setLastPacketAt: (lastPacketAt) => set({ lastPacketAt }),
+  setRegion: (region) => set({ region }),
+  setChannelKeyFingerprint: (channelKeyFingerprint) => set({ channelKeyFingerprint }),
   setDeviceSheetOpen: (deviceSheetOpen) => set({ deviceSheetOpen }),
   disconnect: () =>
     set({

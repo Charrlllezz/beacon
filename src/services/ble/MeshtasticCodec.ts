@@ -1,4 +1,4 @@
-import type { MeshPacket, FromRadio, Position, NodeInfo, Telemetry, Channel, DeviceMetadata } from '../../types/mesh';
+import type { MeshPacket, FromRadio, Position, NodeInfo, Telemetry, Channel, DeviceMetadata, DeviceConfig } from '../../types/mesh';
 import { PortNum } from '../../types/mesh';
 
 // Minimal protobuf wire-format encoder/decoder for Meshtastic packets.
@@ -106,6 +106,7 @@ export function decodeFromRadio(bytes: Uint8Array): FromRadio {
   if (fields.has(8)) result.rebooted = varintVal(fields.get(8)![0]) !== 0;
   if (fields.has(10)) result.channel = decodeChannel(fields.get(10)![0]);
   if (fields.has(13)) result.metadata = decodeDeviceMetadata(fields.get(13)![0]);
+  if (fields.has(5)) result.config = decodeConfig(fields.get(5)![0]); // FromRadio.config
 
   return result;
 }
@@ -121,6 +122,42 @@ function decodeDeviceMetadata(bytes: Uint8Array): DeviceMetadata {
   return meta;
 }
 
+const REGION_NAMES: Record<number, string> = {
+  0: 'UNSET', 1: 'US', 2: 'EU_433', 3: 'EU_868', 4: 'CN', 5: 'JP', 6: 'ANZ',
+  7: 'KR', 8: 'TW', 9: 'RU', 10: 'IN', 11: 'NZ_865', 12: 'TH', 13: '2.4GHz',
+  14: 'UA_433', 15: 'UA_868', 16: 'MY_433', 17: 'MY_919', 18: 'SG_923',
+};
+
+/** Human-readable LoRa region from the RegionCode enum. */
+export function regionName(code: number | null | undefined): string {
+  if (code == null) return '—';
+  return REGION_NAMES[code] ?? `#${code}`;
+}
+
+/**
+ * FNV-1a (32-bit) over the PSK bytes → 6 hex chars. NOT reversible — just
+ * enough to confirm two devices share the same channel key at a glance.
+ */
+function pskFingerprint(psk: Uint8Array): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < psk.length; i++) {
+    h ^= psk[i];
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0').slice(0, 6);
+}
+
+/** Config { LoRaConfig lora = 6 }; LoRaConfig { RegionCode region = 7 } */
+function decodeConfig(bytes: Uint8Array): DeviceConfig {
+  const fields = parseFields(bytes);
+  const config: DeviceConfig = {};
+  if (fields.has(6)) {
+    const lf = parseFields(fields.get(6)![0]);
+    config.lora = { region: lf.has(7) ? varintVal(lf.get(7)![0]) : undefined };
+  }
+  return config;
+}
+
 function decodeChannel(bytes: Uint8Array): Channel {
   const fields = parseFields(bytes);
   const channel: Channel = { index: 0 };
@@ -130,6 +167,8 @@ function decodeChannel(bytes: Uint8Array): Channel {
     channel.settings = {
       name: sf.has(3) ? decodeString(sf.get(3)![0]) : undefined,
     };
+    // ChannelSettings.psk = field 2 — hash to a fingerprint (never store the key).
+    if (sf.has(2)) channel.keyFingerprint = pskFingerprint(sf.get(2)![0]);
   }
   if (fields.has(3)) channel.role = varintVal(fields.get(3)![0]);
   return channel;
