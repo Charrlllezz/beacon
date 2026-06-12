@@ -137,6 +137,11 @@ function routePacket(packet: MeshPacket, myNodeNum: number | null): void {
     case PortNum.TEXT_MESSAGE_APP: {
       const text = decodeTextMessage(payload);
       const message = parseMessage(text, packet.from, fromName, timestamp, packet.channel);
+      // TEMP DIAG (remove once the structured-message render bug is confirmed
+      // fixed): in Console.app, '[RNDVU-DIAG] rx parsed as rally' confirms a
+      // received MF: message reached routing + was added. Absence => it never
+      // arrived/was read; 'text' for an MF: payload => a parse problem.
+      console.warn('[RNDVU-DIAG] rx parsed as', message.type, 'from', packet.from.toString(16));
 
       if (message.type === 'color') {
         useCrewStore.getState().updateColor(packet.from, message.color);

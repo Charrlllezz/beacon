@@ -193,7 +193,7 @@ export class RealBleManager {
             console.warn('FROM_NUM monitor error:', error.message);
             return;
           }
-          this.readFromRadio();
+          this.drainPending();
         },
       );
 
@@ -262,25 +262,25 @@ export class RealBleManager {
     const myNodeNum = useDeviceStore.getState().myNodeNum ?? 0;
     if (myNodeNum === 0) throw new Error('Node number not yet available');
 
-    // 1. Begin edit transaction
+    // 1. REGION FIRST, in its own committed transaction. A radio with no region
+    //    won't transmit at all, and burying region at the end of one long batch
+    //    meant an interrupted provision left it UNSET (radio silently dead).
+    //    Commit it standalone so it persists even if the channel step below
+    //    drops mid-sequence — then a retry/Re-provision only needs the channel.
     await this.writeAdmin(encodeBeginEditSettings(myNodeNum));
+    await this.writeAdmin(encodeSetLoraConfig(myNodeNum, 1)); // RegionCode.US = 1
+    await this.writeAdmin(encodeCommitEditSettings(myNodeNum));
 
-    // 2. Set channel 0 as RNDVU PRIMARY
+    // 2. Channel: set RNDVU as PRIMARY and disable stale channels 1-7, in a
+    //    second committed transaction.
+    await this.writeAdmin(encodeBeginEditSettings(myNodeNum));
     await this.writeAdmin(encodeSetChannel(myNodeNum, channelIndex, channelName, psk, role));
-
-    // 3. Disable channels 1-7 to clear any prior config
     for (let i = 1; i <= 7; i++) {
       await this.writeAdmin(encodeDisableChannel(myNodeNum, i));
     }
-
-    // 4. Set LoRa region to US to ensure radio compatibility
-    await this.writeAdmin(encodeSetLoraConfig(myNodeNum, 1)); // RegionCode.US = 1
-
-    // 5. Commit edit transaction (persists to flash)
     await this.writeAdmin(encodeCommitEditSettings(myNodeNum));
 
-    // 6. Reboot device so config changes take effect
-    //    Device will disconnect and auto-reconnect picks it back up
+    // 3. Reboot so config takes effect; auto-reconnect restores the link.
     await this.writeAdmin(encodeReboot(myNodeNum, 2));
   }
 
@@ -447,6 +447,22 @@ export class RealBleManager {
     }
   }
 
+  /**
+   * Drain ALL currently-queued FROM_RADIO frames, not just one. Run on each
+   * FROM_NUM notification (and the backup poll) so a burst of messages arrives
+   * right away instead of trickling out one-per-5s-poll. Each readFromRadio is a
+   * BLE round-trip (naturally paced), capped so a misbehaving radio can't spin.
+   * The isReading guard keeps overlapping drains from double-reading a frame.
+   */
+  private async drainPending(): Promise<void> {
+    let reads = 0;
+    while (reads < 30) {
+      const more = await this.readFromRadio();
+      if (!more) break;
+      reads++;
+    }
+  }
+
   private async drainFromRadio(): Promise<void> {
     // Drain until firmware sends configCompleteId (the canonical end signal).
     // 10s hard cap as a safety net for stuck firmware. 200ms pacing between
@@ -475,7 +491,7 @@ export class RealBleManager {
   private startPolling(): void {
     this.stopPolling();
     this.pollTimer = setInterval(() => {
-      this.readFromRadio();
+      this.drainPending();
     }, 5000);
   }
 
