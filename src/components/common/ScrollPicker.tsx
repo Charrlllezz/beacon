@@ -15,46 +15,62 @@ interface Props {
 
 export default function ScrollPicker({ items, selectedIndex, onSelect, width = 54, color = Colors.warning }: Props) {
   const flatListRef = useRef<FlatList>(null);
+  // True for the WHOLE user gesture, including fling momentum, so the re-center
+  // effect never fires mid-scroll and snaps/kills it. Cleared only when the
+  // gesture fully settles (momentum end, or drag-end with no momentum).
   const isScrolling = useRef(false);
-  // The index the user last landed on via scroll, so the re-center effect below
-  // doesn't fight a user-driven selection (which would snap/kill a fling).
-  const lastUserIndex = useRef<number | null>(null);
+  const momentumActive = useRef(false);
 
   // Pad with empty items so the selected item can be centered
   const padded = ['', ...items, ''];
 
   useEffect(() => {
-    // Only re-center on a PROGRAMMATIC selectedIndex change (parent set the
-    // value). When the change came from the user's own scroll the list is
-    // already at the right offset, and re-scrolling it would snap/kill a fling.
-    if (!isScrolling.current && selectedIndex !== lastUserIndex.current) {
+    // Re-center only on a PROGRAMMATIC selectedIndex change (parent set the
+    // value, e.g. reopening the meetup sheet). While the user is scrolling the
+    // list is already at the right offset; re-scrolling would fight the gesture.
+    // No remembered-index guard here, so a programmatic reset always re-syncs
+    // even if a prior fling left the list offset drifted.
+    if (!isScrolling.current) {
       flatListRef.current?.scrollToOffset({ offset: selectedIndex * ITEM_HEIGHT, animated: false });
     }
   }, [selectedIndex]);
 
-  // iOS fires onMomentumScrollEnd ONLY after a fling. A slow drag-and-release —
-  // how you carefully dial in a time — ends with onScrollEndDrag and no momentum
-  // event, so the selection never registered. Handle both paths. Record the
-  // user-chosen index so the re-center effect above leaves the fling alone.
   const selectFromOffset = useCallback((offsetY: number) => {
-    isScrolling.current = false;
     const index = Math.round(offsetY / ITEM_HEIGHT);
     const clamped = Math.max(0, Math.min(items.length - 1, index));
-    lastUserIndex.current = clamped;
     if (clamped !== selectedIndex) onSelect(clamped);
   }, [items.length, selectedIndex, onSelect]);
 
+  const handleScrollBegin = useCallback(() => {
+    isScrolling.current = true;
+    momentumActive.current = false;
+  }, []);
+
+  const handleMomentumScrollBegin = useCallback(() => {
+    momentumActive.current = true;
+  }, []);
+
   const handleMomentumScrollEnd = useCallback((e: any) => {
+    momentumActive.current = false;
+    isScrolling.current = false;
     selectFromOffset(e.nativeEvent.contentOffset.y);
   }, [selectFromOffset]);
 
   const handleScrollEndDrag = useCallback((e: any) => {
-    selectFromOffset(e.nativeEvent.contentOffset.y);
+    // iOS fires onMomentumScrollEnd ONLY after a fling. A slow drag-and-release
+    // (carefully dialing a time) ends here with no momentum, so we must commit
+    // the selection. But a fling ALSO fires this at finger-release (mid-fling,
+    // wrong value) just before momentum starts — defer a frame and let
+    // onMomentumScrollBegin claim it, so we don't commit a wrong mid-fling value
+    // and we keep isScrolling true through the fling.
+    const offsetY = e.nativeEvent.contentOffset.y;
+    requestAnimationFrame(() => {
+      if (!momentumActive.current) {
+        isScrolling.current = false;
+        selectFromOffset(offsetY);
+      }
+    });
   }, [selectFromOffset]);
-
-  const handleScrollBegin = useCallback(() => {
-    isScrolling.current = true;
-  }, []);
 
   return (
     <View style={[styles.container, { width, height: ITEM_HEIGHT * VISIBLE_ITEMS }]}>
@@ -68,6 +84,7 @@ export default function ScrollPicker({ items, selectedIndex, onSelect, width = 5
         snapToInterval={ITEM_HEIGHT}
         decelerationRate="fast"
         onScrollBeginDrag={handleScrollBegin}
+        onMomentumScrollBegin={handleMomentumScrollBegin}
         onMomentumScrollEnd={handleMomentumScrollEnd}
         onScrollEndDrag={handleScrollEndDrag}
         getItemLayout={(_, index) => ({ length: ITEM_HEIGHT, offset: ITEM_HEIGHT * index, index })}
