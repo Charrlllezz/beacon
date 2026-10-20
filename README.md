@@ -2,7 +2,7 @@
 
 Festival crew app for when there is no cell service. Everyone in the crew carries a cheap [Meshtastic](https://meshtastic.org) LoRa radio (a LilyGO T-Echo) paired to their phone over Bluetooth; the radios form a mesh with no towers and no Wi-Fi. RNDVU sits on top of that mesh and answers the questions crews actually have once they get separated: where is everyone, where and when are we meeting, who needs help, and who's going to which set. Started as "Beacon" (hence the repo name); rebranded RNDVU in April 2026.
 
-**Status: working prototype, built for Coachella 2026 Weekend 2.** Real Bluetooth against real radios, a TestFlight build, and 117 passing tests. The git history records a TestFlight build and hardware debugging with testers; it does not record festival-day use, so this README doesn't claim it. See [Status](#status).
+**Status: working prototype, built for Coachella 2026 Weekend 2.** Real Bluetooth against real radios, a TestFlight build, and 124 passing tests. The git history records a TestFlight build and hardware debugging with testers; it does not record festival-day use, so this README doesn't claim it. See [Status](#status).
 
 ```bash
 npm install                # lockfile + .npmrc (legacy-peer-deps)
@@ -61,7 +61,7 @@ MockBleManager ──► MockFirmware (virtual radio; emits real protobuf bytes,
 
 **Locked in a pocket.** iOS keeps the GATT session up under the `bluetooth-central` background mode and wakes the app for each FROM_NUM notify, but JS timers don't run while suspended. So the backup poll and the heartbeat can't be relied on there; delivery rides on the notify, and a notify that lands mid-drain re-runs the drain instead of being dropped. A link lost in the background (or after the fast retries) becomes a CoreBluetooth connect with no timeout, which iOS completes whenever the radio is reachable again. CoreBluetooth state restoration lets iOS relaunch the app for a BLE event after killing it, and connect adopts the link iOS kept. The heartbeat isn't what keeps the link alive: on the T-Echo's nRF52 the firmware's lost-phone check is the physical BLE link, not an idle timer. `RealBleManager.test.ts` drives all of this against a fake ble-plx backed by `MockFirmware`.
 
-**Offline satellite maps.** `TilePrefetch` downloads ESRI World Imagery for the active festival's `venue.tileBounds` at zoom 14–18 (Coachella: a 5.6 km box, 2,746 tiles; NOS: about 3.5 km, 1,034 tiles) into the app's documents directory and hands the path to `react-native-maps`' `UrlTile` with `offlineMode` on when you're near the venue. Tiles are written with no extension because the native cache reads `{z}/{x}/{y}` verbatim; with `.jpg` every tile was invisible and the map silently fell back to the network.
+**Offline satellite maps.** `TilePrefetch` downloads ESRI World Imagery for the active festival's `venue.tileBounds` at zoom 14–18 (Coachella: a 5.6 km box, 2,746 tiles; NOS: about 3.5 km, 1,034 tiles) into the app's documents directory, starting at launch and on every foreground (no need to open the Map tab; the Device sheet shows progress, and it stops early with no network), and hands the path to `react-native-maps`' `UrlTile` with `offlineMode` on when you're near the venue. Tiles are written with no extension because the native cache reads `{z}/{x}/{y}` verbatim; with `.jpg` every tile was invisible and the map silently fell back to the network.
 
 **Crew is not the node DB.** A Meshtastic radio streams every node it has ever heard on connect. The first version made all of them crew ("the 35+ random nodes"). Now `upsertMember` only creates a member for a node heard within the online window; packets from unknown nodes update nothing until a fresh `NodeInfo` arrives.
 
@@ -69,7 +69,7 @@ MockBleManager ──► MockFirmware (virtual radio; emits real protobuf bytes,
 
 ## Status
 
-Verified in this tree: `tsc` clean, `vitest` 117/117. `USE_MOCK = false`, so the checked-in build talks to hardware.
+Verified in this tree: `tsc` clean, `vitest` 124/124. `USE_MOCK = false`, so the checked-in build talks to hardware.
 
 Known gaps, all noted in the code:
 

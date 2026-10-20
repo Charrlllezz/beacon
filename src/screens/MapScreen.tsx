@@ -3,7 +3,8 @@ import { View, StyleSheet, Text, TouchableOpacity, Pressable, Modal, TextInput, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import MapView, { Marker, UrlTile, PROVIDER_DEFAULT } from 'react-native-maps';
-import { prefetchVenueTiles, isTilesPrefetched, getTilePath } from '../services/map/TilePrefetch';
+import { getTilePath } from '../services/map/TilePrefetch';
+import { useOfflineMapStore } from '../store/useOfflineMapStore';
 import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
 import { useCrewStore } from '../store/useCrewStore';
 import { useTagStore } from '../store/useTagStore';
@@ -46,7 +47,6 @@ export const CREW_COLORS = [
 export default function MapScreen() {
   // Active festival (App.tsx remounts the tabs when it changes).
   const config = festivalConfig.getConfig();
-  const tileBounds = config.venue.tileBounds ?? config.venue.bounds;
   const mapRef = useRef<MapView>(null);
   const crewMembers = useCrewStore(s => s.crewMembers);
   const myLocation = useCrewStore(s => s.myLocation);
@@ -67,12 +67,12 @@ export default function MapScreen() {
   // cache and transparently falls back to the network when online, so there's
   // no reason to gate it on prefetch completion. Gating used to leave tilesReady
   // false forever if the prefetch promise rejected, hiding the satellite layer
-  // entirely. Warm the cache in the background regardless.
+  // entirely. The download itself is owned by useOfflineMapStore (started at
+  // launch/foreground from App.tsx); this is a no-op if it's already running
+  // or done.
   useEffect(() => {
     setTilesReady(true);
-    if (!isTilesPrefetched(tileBounds)) {
-      prefetchVenueTiles(tileBounds).catch((e) => console.warn('Tile prefetch failed (non-fatal):', e));
-    }
+    useOfflineMapStore.getState().ensure(config);
   }, [config.festival.id]);
 
   // Use satellite view when near venue, standard otherwise

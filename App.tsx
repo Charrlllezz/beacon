@@ -18,6 +18,8 @@ import { useCrewStore } from './src/store/useCrewStore';
 import { useTagStore } from './src/store/useTagStore';
 import { useScheduleStore } from './src/store/useScheduleStore';
 import { useFestivalStore } from './src/store/useFestivalStore';
+import { useOfflineMapStore } from './src/store/useOfflineMapStore';
+import { festivalConfig } from './src/services/festival/FestivalConfig';
 import { bleService } from './src/services/ble/BleManager';
 import { RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK } from './src/services/ble/MeshtasticCodec';
 import { routeFromRadio, onMeshMessage } from './src/services/ble/PacketRouter';
@@ -56,6 +58,14 @@ export default function App() {
   // active id remounts them when it changes (rare: first GPS fix near a
   // different venue, a date rollover, or a manual pick in the Device sheet).
   const activeFestivalId = useFestivalStore(s => s.activeId);
+
+  // Get the active festival's offline map onto the phone without anyone
+  // opening the Map tab: on launch and whenever the festival changes. Only
+  // while visible: a background BLE wake is a few seconds, not a download slot.
+  useEffect(() => {
+    if (AppState.currentState !== 'active') return;
+    useOfflineMapStore.getState().ensure(festivalConfig.getConfig());
+  }, [activeFestivalId]);
   const unsubRef = useRef<{ packet?: () => void; status?: () => void; notify?: () => void }>({});
   const gpsSubRef = useRef<Location.LocationSubscription | null>(null);
 
@@ -185,6 +195,8 @@ export default function App() {
         startPhoneGps();
         // Dates move on while the app sits in a pocket for days.
         useFestivalStore.getState().refresh();
+        // Resume/retry the offline map (no-op when complete or running).
+        useOfflineMapStore.getState().ensure(festivalConfig.getConfig());
       }
     });
     return () => sub.remove();
