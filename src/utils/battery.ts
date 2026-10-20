@@ -14,7 +14,11 @@ export function batteryIcon(level?: number): string {
   return '🔋';
 }
 
+/** Firmware reports 101 when the radio runs on USB power. */
+export const USB_POWERED_LEVEL = 101;
+
 export function batteryLabel(level?: number): string {
   if (level === undefined) return '--';
+  if (level >= USB_POWERED_LEVEL) return 'USB';
   return `${Math.min(level, 100)}%`;
 }
