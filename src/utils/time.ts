@@ -15,6 +15,13 @@ export function formatTime(isoString: string, timeZone?: string): string {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone });
 }
 
+// 24h hour/minute (as carried by MF:M meetups) → "9:05 PM".
+export function formatClock(hour: number, minute: number): string {
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12}:${minute.toString().padStart(2, '0')} ${ampm}`;
+}
+
 export function isOnline(lastHeardSeconds?: number, thresholdSeconds = 3600): boolean {
   // 1-hour default — ~4x Meshtastic's position_broadcast_secs (900s) so we
   // tolerate 2-3 consecutive RF-dropped broadcasts before flipping a quiet

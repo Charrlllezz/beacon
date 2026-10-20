@@ -1,5 +1,6 @@
 import { PortNum } from '../../types/mesh';
 import type { MeshPacket, FromRadio } from '../../types/mesh';
+import type { Message } from '../../types/messages';
 import { decodeTextMessage, decodePosition, decodeTelemetry } from './MeshtasticCodec';
 import { parseMessage } from '../mesh/MessageService';
 import { useMessagesStore } from '../../store/useMessagesStore';
@@ -28,6 +29,16 @@ function isPacketDuplicate(packetId: number | undefined): boolean {
     seenPacketIds.delete(oldest);
   }
   return false;
+}
+
+// Fired for every chat-visible message added from the mesh (after dedup), so
+// side effects like local notifications don't have to live in the router.
+type MeshMessageListener = (message: Message) => void;
+const meshMessageListeners = new Set<MeshMessageListener>();
+
+export function onMeshMessage(cb: MeshMessageListener): () => void {
+  meshMessageListeners.add(cb);
+  return () => { meshMessageListeners.delete(cb); };
 }
 
 export function routeFromRadio(fromRadio: FromRadio, myNodeNum: number | null): void {
@@ -155,6 +166,9 @@ function routePacket(packet: MeshPacket, myNodeNum: number | null): void {
       }
 
       useMessagesStore.getState().addMessage(message);
+      meshMessageListeners.forEach(cb => {
+        try { cb(message); } catch (e) { console.warn('mesh message listener failed:', e); }
+      });
 
       if (message.type === 'going') {
         useScheduleStore.getState().addGoingEntry({
