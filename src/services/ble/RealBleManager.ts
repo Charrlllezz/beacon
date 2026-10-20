@@ -7,7 +7,7 @@ import {
   TO_RADIO_UUID,
   FROM_NUM_UUID,
 } from './ConnectionState';
-import { decodeFromRadio, encodeToRadio, encodeWantConfig, encodeSetChannel, encodeBeginEditSettings, encodeCommitEditSettings, encodeDisableChannel, encodeSetLoraConfig, encodeReboot, encodeHeartbeat, encodeSetOwner, encodeFactoryReset, encodeSetPositionConfig } from './MeshtasticCodec';
+import { decodeFromRadio, encodeToRadio, encodeWantConfig, encodeSetChannel, encodeBeginEditSettings, encodeCommitEditSettings, encodeDisableChannel, encodeSetLoraConfig, encodeHeartbeat, encodeSetOwner, encodeFactoryReset, encodeSetPositionConfig } from './MeshtasticCodec';
 import { useDeviceStore } from '../../store/useDeviceStore';
 
 export type PacketCallback = (fromRadio: FromRadio) => void;
@@ -366,36 +366,42 @@ export class RealBleManager {
   }
 
   /**
-   * Full device configuration: sets the RNDVU channel, disables stale channels,
-   * and enforces LoRa region/modem so every device ends up in the same state
-   * regardless of prior configuration.
+   * Full device configuration: LoRa region/modem, the RNDVU channel, stale
+   * channels disabled, and (when given) the owner name, so every device ends up
+   * in the same state regardless of prior configuration.
+   *
+   * One edit transaction, one commit, one reboot. The commit has to be the
+   * last write: firmware (since at least 2.5) shuts Bluetooth off the moment it
+   * handles commit_edit_settings (AdminModule → disableBluetooth, which on the
+   * T-Echo's nRF52 disconnects the phone), then reboots 7 s later
+   * (DEFAULT_REBOOT_SECONDS). The old sequence committed region first, so on a
+   * T-Echo the channel writes after it hit a dead link, and the retry did the
+   * same. Inside the transaction nothing is saved and nothing drops the link,
+   * so an interruption commits nothing and the caller retries the whole thing
+   * (ProvisioningInterruptedError). The owner goes in here too: on its own,
+   * set_owner reboots the radio separately.
    */
-  async setChannel(channelIndex: number, channelName: string, psk: Uint8Array, role = 1): Promise<void> {
+  async setChannel(
+    channelIndex: number,
+    channelName: string,
+    psk: Uint8Array,
+    role = 1,
+    owner?: { longName: string; shortName: string },
+  ): Promise<void> {
     if (!this.device || !this.isConnected) throw new Error('Not connected');
 
     const myNodeNum = useDeviceStore.getState().myNodeNum ?? 0;
     if (myNodeNum === 0) throw new Error('Node number not yet available');
 
-    // 1. REGION FIRST, in its own committed transaction. A radio with no region
-    //    won't transmit at all, and burying region at the end of one long batch
-    //    meant an interrupted provision left it UNSET (radio silently dead).
-    //    Commit it standalone so it persists even if the channel step below
-    //    drops mid-sequence — then a retry/Re-provision only needs the channel.
     await this.writeAdmin(encodeBeginEditSettings(myNodeNum));
     await this.writeAdmin(encodeSetLoraConfig(myNodeNum, 1)); // RegionCode.US = 1
-    await this.writeAdmin(encodeCommitEditSettings(myNodeNum));
-
-    // 2. Channel: set RNDVU as PRIMARY and disable stale channels 1-7, in a
-    //    second committed transaction.
-    await this.writeAdmin(encodeBeginEditSettings(myNodeNum));
     await this.writeAdmin(encodeSetChannel(myNodeNum, channelIndex, channelName, psk, role));
     for (let i = 1; i <= 7; i++) {
       await this.writeAdmin(encodeDisableChannel(myNodeNum, i));
     }
+    if (owner) await this.writeAdmin(encodeSetOwner(myNodeNum, owner.longName, owner.shortName));
+    // Saves everything, drops Bluetooth and reboots; auto-reconnect restores the link.
     await this.writeAdmin(encodeCommitEditSettings(myNodeNum));
-
-    // 3. Reboot so config takes effect; auto-reconnect restores the link.
-    await this.writeAdmin(encodeReboot(myNodeNum, 2));
   }
 
   async sendText(text: string, channelIndex = 0): Promise<void> {
@@ -416,6 +422,9 @@ export class RealBleManager {
    * Writes the user's display name to the T-Echo so NodeInfo broadcasts
    * carry the RNDVU name, not the factory default. Without this, peers see
    * this node as "Unknown" in their Crew tab.
+   *
+   * On its own this reboots the radio (~7 s later, firmware saveChanges), so
+   * pairing passes the name to setChannel instead. Use this only for a rename.
    */
   async setOwner(longName: string, shortName: string): Promise<void> {
     if (!this.device || !this.isConnected) throw new Error('Not connected');

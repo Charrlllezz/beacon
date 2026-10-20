@@ -34,6 +34,8 @@ class FakeWorld {
   firmware = new MockFirmware({ myNodeNum: 0x5e6f7a });
   deviceId = 'radio-1';
   inRange = true;
+  /** Firmware switched Bluetooth off (after a commit) and hasn't rebooted yet. */
+  bluetoothOff = false;
   /** Native link up. Can be true before JS connects (state restoration). */
   linkUp = false;
   connectCalls: Array<{ id: string; timeout?: number }> = [];
@@ -49,6 +51,24 @@ class FakeWorld {
   muteNotify = false;
   device = new FakeDevice(this);
 
+  constructor() {
+    // Like a T-Echo: a commit disconnects the phone and stops advertising, and
+    // the radio is connectable again only once it has rebooted.
+    this.firmware.onBluetoothOff(() => {
+      this.bluetoothOff = true;
+      if (this.linkUp) this.dropLink();
+    });
+    this.firmware.onRebooted(() => {
+      this.bluetoothOff = false;
+      if (this.linkUp) this.dropLink();
+      if (this.inRange) this.completePending();
+    });
+  }
+
+  get connectable(): boolean {
+    return this.inRange && !this.bluetoothOff;
+  }
+
   /** Radio walks out of range (or reboots): link drops, connects stall. */
   goOutOfRange(): void {
     this.inRange = false;
@@ -58,6 +78,10 @@ class FakeWorld {
   /** Radio is reachable again: any pending connect completes. */
   comeBackIntoRange(): void {
     this.inRange = true;
+    if (this.connectable) this.completePending();
+  }
+
+  private completePending(): void {
     const waiting = this.pending.splice(0);
     for (const p of waiting) {
       if (p.timer) clearTimeout(p.timer);
@@ -144,7 +168,7 @@ export class BleManager {
     w.connectCalls.push({ id, timeout: opts?.timeout });
     return new Promise((resolve, reject) => {
       if (id !== w.deviceId) { reject(new Error('Device not found')); return; }
-      if (w.inRange) {
+      if (w.connectable) {
         setTimeout(() => { w.linkUp = true; resolve(w.device); }, CONNECT_LATENCY_MS);
         return;
       }

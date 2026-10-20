@@ -99,6 +99,9 @@ type Listener = () => void;
  * delivers them to the app by calling decodeFromRadio — same path as
  * hardware-read bytes.
  */
+/** Firmware DEFAULT_REBOOT_SECONDS: the delay after a commit or a lone set_owner. */
+export const COMMIT_REBOOT_SECONDS = 7;
+
 export class MockFirmware {
   readonly myNodeNum: number;
   owner: { id: string; longName: string; shortName: string };
@@ -114,6 +117,10 @@ export class MockFirmware {
   private listeners = new Set<Listener>();
   private lastConfigId: number | null = null;
   private pendingReboot: ReturnType<typeof setTimeout> | null = null;
+  /** begin_edit_settings received, commit not yet. */
+  editOpen = false;
+  private bluetoothOffListeners = new Set<Listener>();
+  private rebootListeners = new Set<Listener>();
 
   constructor(opts: MockFirmwareOptions) {
     this.myNodeNum = opts.myNodeNum;
@@ -150,6 +157,22 @@ export class MockFirmware {
   onOutputAvailable(cb: Listener): () => void {
     this.listeners.add(cb);
     return () => { this.listeners.delete(cb); };
+  }
+
+  /**
+   * Fires when the firmware shuts Bluetooth off (commit_edit_settings, and
+   * config writes outside a transaction): the phone is disconnected at once and
+   * can't reconnect until the reboot that follows.
+   */
+  onBluetoothOff(cb: Listener): () => void {
+    this.bluetoothOffListeners.add(cb);
+    return () => { this.bluetoothOffListeners.delete(cb); };
+  }
+
+  /** Fires when a reboot completes (the radio is back up). */
+  onRebooted(cb: Listener): () => void {
+    this.rebootListeners.add(cb);
+    return () => { this.rebootListeners.delete(cb); };
   }
 
   private enqueue(frame: Uint8Array) {
@@ -222,25 +245,48 @@ export class MockFirmware {
   /**
    * Dispatch an AdminMessage field. See admin.proto for the full oneof.
    * Fields we implement:
-   *   set_owner (32)            → update owner, broadcast self NodeInfo
+   *   set_owner (32)            → update owner, broadcast self NodeInfo;
+   *                                   outside a transaction, reboot
    *   set_channel (33)          → update primaryChannel, broadcast Channel
-   *   set_config (34)           → apply Config submessage (lora, position, …)
-   *   set_module_config (35)    → ignored (not used by RNDVU)
-   *   begin_edit_settings (64)  → open transaction (no-op, we apply eagerly)
-   *   commit_edit_settings (65) → close transaction (no-op)
+   *   set_config (34)           → apply Config submessage (lora, position, …);
+   *                                   outside a transaction, Bluetooth off + reboot
+   *   set_module_config (35)    → stored raw (telemetry etc.); same rule as 34
+   *   begin_edit_settings (64)  → open transaction (we still apply eagerly)
+   *   commit_edit_settings (65) → close it: Bluetooth off at once, then reboot
    *   reboot_seconds (97)       → schedule reboot
    *   factory_reset_device (94) → wipe state + schedule reboot
+   *
+   * The reboot and Bluetooth rules match firmware 2.7.26 AdminModule.cpp; the
+   * T-Echo cannot take another write after a commit.
    */
   private handleAdminMessage(adminBytes: Uint8Array) {
     const f = parseFields(adminBytes);
 
-    if (f.has(32)) this.handleSetOwner(f.get(32)![0]);
+    if (f.has(64)) this.editOpen = true;
+    if (f.has(32)) {
+      this.handleSetOwner(f.get(32)![0]);
+      if (!this.editOpen) this.handleReboot(COMMIT_REBOOT_SECONDS);
+    }
     if (f.has(33)) this.handleSetChannel(f.get(33)![0]);
-    if (f.has(34)) this.handleSetConfig(f.get(34)![0]);
-    if (f.has(64)) { /* begin_edit_settings — no-op */ }
-    if (f.has(65)) { /* commit_edit_settings — no-op */ }
+    if (f.has(34) || f.has(35)) {
+      if (f.has(34)) this.handleSetConfig(f.get(34)![0]);
+      if (f.has(35)) this.moduleConfigs.push(f.get(35)![0]);
+      if (!this.editOpen) this.bluetoothOffAndReboot();
+    }
+    if (f.has(65)) {
+      this.editOpen = false;
+      this.bluetoothOffAndReboot();
+    }
     if (f.has(94)) this.handleFactoryReset();
     if (f.has(97)) this.handleReboot(varintOf(f.get(97)![0]));
+  }
+
+  /** Raw ModuleConfig messages received via set_module_config, oldest first. */
+  moduleConfigs: Uint8Array[] = [];
+
+  private bluetoothOffAndReboot() {
+    this.bluetoothOffListeners.forEach(cb => cb());
+    this.handleReboot(COMMIT_REBOOT_SECONDS);
   }
 
   private handleSetOwner(userBytes: Uint8Array) {
@@ -323,6 +369,8 @@ export class MockFirmware {
   }
 
   private performReboot() {
+    this.pendingReboot = null;
+    this.editOpen = false;
     this.rebootCount += 1;
     // Drop any queued output — firmware starts with an empty FIFO.
     this.outputBuffer = [];
@@ -330,6 +378,7 @@ export class MockFirmware {
     // the rebooted=true frame after startup. The MockBleManager transport
     // will also drop/re-establish the connection around this.
     this.enqueue(encodeFromRadioRebooted());
+    this.rebootListeners.forEach(cb => cb());
   }
 
   // ── Config drain ─────────────────────────────────────────────────────────

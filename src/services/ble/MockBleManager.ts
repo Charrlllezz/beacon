@@ -8,11 +8,10 @@ import {
   encodeCommitEditSettings,
   encodeDisableChannel,
   encodeSetLoraConfig,
-  encodeReboot,
   encodeFactoryReset,
   encodeSetPositionConfig,
 } from './MeshtasticCodec';
-import { MockFirmware } from './MockFirmware';
+import { MockFirmware, COMMIT_REBOOT_SECONDS } from './MockFirmware';
 import type { VirtualPeer } from './MockPeers';
 import {
   applyScenario,
@@ -113,29 +112,33 @@ export class MockBleManager {
     if (!this.isConnected) throw new Error('Not connected');
     await delay(50);
     this.firmware.handleToRadio(encodeSetOwner(this.firmware.myNodeNum, longName, shortName));
+    // A lone set_owner reboots the radio (see MockFirmware.handleAdminMessage).
+    this.scheduleReboot(COMMIT_REBOOT_SECONDS * 1000 + 200);
   }
 
   /**
-   * Full setChannel admin transaction, matching RealBleManager.setChannel.
-   * Fires the reboot admin at the end, which MockFirmware schedules as a
-   * timer; our transport catches the pending reboot by checking isConnected
-   * state and tears down the connection at the right time.
+   * Full setChannel admin transaction, matching RealBleManager.setChannel: one
+   * transaction, commit last. MockFirmware reboots COMMIT_REBOOT_SECONDS after
+   * the commit; our transport mirrors the BLE drop and reconnect around it.
    */
-  async setChannel(channelIndex: number, channelName: string, psk: Uint8Array, role = 1): Promise<void> {
+  async setChannel(
+    channelIndex: number,
+    channelName: string,
+    psk: Uint8Array,
+    role = 1,
+    owner?: { longName: string; shortName: string },
+  ): Promise<void> {
     if (!this.isConnected) throw new Error('Not connected');
     const myNodeNum = this.firmware.myNodeNum;
     await this.writeAdmin(encodeBeginEditSettings(myNodeNum));
+    await this.writeAdmin(encodeSetLoraConfig(myNodeNum, 1));
     await this.writeAdmin(encodeSetChannel(myNodeNum, channelIndex, channelName, psk, role));
     for (let i = 1; i <= 7; i++) {
       await this.writeAdmin(encodeDisableChannel(myNodeNum, i));
     }
-    await this.writeAdmin(encodeSetLoraConfig(myNodeNum, 1));
+    if (owner) await this.writeAdmin(encodeSetOwner(myNodeNum, owner.longName, owner.shortName));
     await this.writeAdmin(encodeCommitEditSettings(myNodeNum));
-    await this.writeAdmin(encodeReboot(myNodeNum, 2));
-    // Schedule the fake BLE disconnect + reconnect-auto cycle to mirror what
-    // real hardware does when it reboots: BLE drops, auto-reconnect kicks in,
-    // fresh config drain.
-    this.scheduleReboot();
+    this.scheduleReboot(COMMIT_REBOOT_SECONDS * 1000 + 200);
   }
 
   async factoryReset(): Promise<void> {
@@ -183,7 +186,7 @@ export class MockBleManager {
     }
   }
 
-  private scheduleReboot() {
+  private scheduleReboot(afterMs = 2200) {
     // Real firmware reboots ~2s after the admin. Simulate the BLE drop at
     // that moment; auto-reconnect on the app side (or the user-tap path)
     // drives the reconnect back to us. Here we implement it as: drop status,
@@ -203,7 +206,7 @@ export class MockBleManager {
         // meantime (e.g., user tapped Release Device mid-reboot).
         this.connect('mock-device-001').catch(() => {});
       }, REBOOT_RECONNECT_DELAY_MS);
-    }, 2200);
+    }, afterMs);
   }
 
   private stopTimers() {
