@@ -88,24 +88,23 @@ export default function OnboardingScreen({ onComplete }: Props) {
       if (nodeNum === null) {
         console.warn('waitForMyNode timed out on onboarding; skipping device admin writes');
       } else {
-        // Apply display name (persists across reboot).
+        // Display name goes to the radio inside the provisioning transaction
+        // below (a separate set_owner would reboot the radio a second time).
+        let owner: { longName: string; shortName: string } | undefined;
         if (displayName.trim()) {
           const short = shortName.trim() || displayName.trim().slice(0, 4);
           const long = displayName.trim();
           useCrewStore.getState().setDisplayName(long, short);
-          try {
-            await bleService.setOwner(long, short);
-          } catch (e) {
-            console.warn('setOwner on onboarding failed (non-fatal):', e);
-          }
+          owner = { longName: long, shortName: short };
         }
 
-        // Provision the shared RNDVU channel + full LoRaConfig. Device reboots
-        // ~2s later; auto-reconnect in RealBleManager handles the restore, so
-        // we fire-and-forget here. ConnectionBar will show 'reconnecting'
-        // briefly after the user lands on the main app.
+        // Provision region, the shared RNDVU channel and the name in one
+        // transaction. The commit drops Bluetooth and the radio reboots ~7s
+        // later; auto-reconnect in RealBleManager handles the restore, so we
+        // don't wait for it here. ConnectionBar shows 'reconnecting' briefly
+        // after the user lands on the main app.
         try {
-          await bleService.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK, 1);
+          await bleService.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK, 1, owner);
         } catch (e) {
           console.warn('setChannel on onboarding failed:', e);
           // Don't silently proceed with a half-provisioned radio. Flag it so the

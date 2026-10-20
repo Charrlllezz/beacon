@@ -159,14 +159,9 @@ export default function App() {
       // Rehydrate the display name (factory reset wiped it on the device side).
       const raw = await AsyncStorage.getItem(DISPLAY_NAME_KEY);
       const savedName = raw ? (JSON.parse(raw) as { longName: string; shortName: string }) : null;
-      if (savedName) {
-        try { await bleService.setOwner(savedName.longName, savedName.shortName); } catch (e) {
-          console.warn('reprovision setOwner failed:', e);
-        }
-      }
-      // Re-provision the channel. setChannel triggers another reboot; the
-      // next reconnect will find the flag cleared and skip this path.
-      await bleService.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK, 1);
+      // Re-provision channel + name in one transaction. It ends in a reboot;
+      // the next reconnect finds the flag cleared and skips this path.
+      await bleService.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK, 1, savedName ?? undefined);
       await AsyncStorage.removeItem(NEEDS_REPROVISION_KEY);
     } catch (e) {
       console.warn('reprovision failed (will retry on next reconnect):', e);
