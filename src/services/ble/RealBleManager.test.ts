@@ -18,6 +18,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 import { resetWorld } from './testing/FakeBlePlx';
+import { getField, varintOf } from './sim/wire';
 import { RealBleManager } from './RealBleManager';
 import { useDeviceStore } from '../../store/useDeviceStore';
 
@@ -267,6 +268,9 @@ describe('RealBleManager (fake ble-plx over MockFirmware)', () => {
     expect(w.firmware.loraConfig.region).toBe(1);
     expect(w.firmware.primaryChannel).toMatchObject({ name: RNDVU_CHANNEL_NAME, role: 1, positionPrecision: 32 });
     expect(w.firmware.owner).toMatchObject({ longName: 'Ash', shortName: 'ASH' });
+    // Battery broadcasts turned on in the same transaction.
+    const telemetry = w.firmware.moduleConfigs.map(m => getField(m, 6)?.value).find(Boolean)!;
+    expect(varintOf(getField(telemetry, 14))).toBe(1);
 
     await vi.advanceTimersByTimeAsync(30_000);
     expect(w.firmware.rebootCount).toBe(1); // no second reboot for the name

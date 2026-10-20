@@ -566,6 +566,56 @@ export function encodeSetPositionConfig(
   return encodeAdminToRadio(myNodeNum, adminMessage);
 }
 
+/** How often each radio broadcasts its battery (device telemetry). The firmware's floor for clients is 30 min. */
+export const DEVICE_TELEMETRY_INTERVAL_SECS = 1800;
+
+/**
+ * AdminMessage.set_module_config = 35 { ModuleConfig.telemetry = 6 { TelemetryConfig } }
+ *
+ * TelemetryConfig (protobufs at firmware 2.7.26):
+ *   device_update_interval          = 1  (uint32, seconds)
+ *   environment_update_interval     = 2
+ *   environment_measurement_enabled = 3  (bool)
+ *   environment_screen_enabled      = 4
+ *   environment_display_fahrenheit  = 5
+ *   air_quality_enabled             = 6
+ *   air_quality_interval            = 7
+ *   power_measurement_enabled       = 8
+ *   power_update_interval           = 9
+ *   power_screen_enabled            = 10
+ *   health_measurement_enabled      = 11
+ *   health_update_interval          = 12
+ *   health_screen_enabled           = 13
+ *   device_telemetry_enabled        = 14 (bool)
+ *
+ * set_module_config replaces the whole TelemetryConfig, so every field is
+ * written. Since firmware 2.7.13 a radio sends its battery to the mesh only
+ * with device_telemetry_enabled; without it crew battery never updates.
+ * Environment/air/power/health sensors stay off: some T-Echos have dead
+ * BME280s, and they'd cost airtime for nothing RNDVU shows.
+ */
+export function encodeSetTelemetryConfig(myNodeNum: number, deviceUpdateIntervalSecs = DEVICE_TELEMETRY_INTERVAL_SECS): Uint8Array {
+  const telemetry = concat(
+    varField(1, deviceUpdateIntervalSecs), // device_update_interval
+    varField(2, 0),                        // environment_update_interval (default)
+    varField(3, 0),                        // environment_measurement_enabled = false
+    varField(4, 0),                        // environment_screen_enabled = false
+    varField(5, 0),                        // environment_display_fahrenheit = false
+    varField(6, 0),                        // air_quality_enabled = false
+    varField(7, 0),                        // air_quality_interval (default)
+    varField(8, 0),                        // power_measurement_enabled = false
+    varField(9, 0),                        // power_update_interval (default)
+    varField(10, 0),                       // power_screen_enabled = false
+    varField(11, 0),                       // health_measurement_enabled = false
+    varField(12, 0),                       // health_update_interval (default)
+    varField(13, 0),                       // health_screen_enabled = false
+    varField(14, 1),                       // device_telemetry_enabled = true
+  );
+  const moduleConfig = lenField(6, telemetry);       // ModuleConfig.telemetry
+  const adminMessage = lenField(35, moduleConfig);   // AdminMessage.set_module_config
+  return encodeAdminToRadio(myNodeNum, adminMessage);
+}
+
 /**
  * AdminMessage.set_owner = 32 (User)
  * User {
