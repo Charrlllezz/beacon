@@ -15,35 +15,14 @@ import RNDVUHeader from '../components/common/RNDVUHeader';
 import FirstOpenTip from '../components/common/FirstOpenTip';
 import ConnectionBar from '../components/common/ConnectionBar';
 import { formatTime } from '../utils/time';
+import { festivalDays, festivalDayKey } from '../services/festival/FestivalSelection';
 import type { Stage, ScheduleSlot } from '../types/festival';
 
-// Festival days: Fri Apr 17 – Sun Apr 19, 2026 (UTC-7)
-const FESTIVAL_DAYS = [
-  { label: 'Fri', date: 17 },
-  { label: 'Sat', date: 18 },
-  { label: 'Sun', date: 19 },
-];
-
-// Bucket slots by the FESTIVAL's calendar day/hour, not the device's — a
-// traveler whose phone is still on home time would otherwise see sets land in
-// the wrong day column.
-const FESTIVAL_TZ = festivalConfig.getConfig().festival.timezone;
-
-function festivalDateParts(iso: string): { day: number; hour: number } {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: FESTIVAL_TZ, day: 'numeric', hour: 'numeric', hour12: false,
-  }).formatToParts(new Date(iso));
-  const day = Number(parts.find(p => p.type === 'day')?.value ?? '0');
-  let hour = Number(parts.find(p => p.type === 'hour')?.value ?? '0');
-  if (hour === 24) hour = 0; // some engines emit '24' for midnight under hour12:false
-  return { day, hour };
-}
-
-function slotMatchesDay(slot: ScheduleSlot, dayOfMonth: number): boolean {
-  // Late-night sets (before 6am festival-local) belong to the previous day.
-  const { day, hour } = festivalDateParts(slot.start);
-  return day === dayOfMonth || (hour < 6 && day === dayOfMonth + 1);
-}
+// Day tabs and slot bucketing come from the active festival config, in the
+// FESTIVAL's timezone (not the device's — a traveler whose phone is still on
+// home time would otherwise see sets land in the wrong day column).
+// festivalDayKey puts late-night sets (before 6am) on the previous day, and
+// works across month/year boundaries (Countdown NYE's after-midnight sets).
 
 interface ConflictInfo {
   stageId: string;
@@ -90,6 +69,9 @@ export default function ScheduleScreen() {
   const [myScheduleOnly, setMyScheduleOnly] = useState(false);
   const [activeStageId, setActiveStageId] = useState<string | null>(null);
 
+  const config = festivalConfig.getConfig();
+  const FESTIVAL_TZ = config.festival.timezone;
+  const days = useMemo(() => festivalDays(config), [config]);
   const stages = festivalConfig.getAllStages();
 
   const toggleStageFilter = (stageId: string) => {
@@ -101,7 +83,7 @@ export default function ScheduleScreen() {
   const addMessage = useMessagesStore(s => s.addMessage);
 
   const myName = myNodeNum ? (crewMembers[myNodeNum]?.longName ?? 'You') : 'You';
-  const dayConfig = FESTIVAL_DAYS[selectedDay];
+  const dayConfig = days[selectedDay] ?? days[0];
 
   async function commitGoing(stage: Stage, slot: ScheduleSlot) {
     if (!myNodeNum) {
@@ -204,7 +186,7 @@ export default function ScheduleScreen() {
       .filter(stage => !activeStageId || activeStageId === stage.id || query)
       .map(stage => {
         let slots = stage.schedule
-          .filter(s => slotMatchesDay(s, dayConfig.date))
+          .filter(s => dayConfig !== undefined && festivalDayKey(s.start, FESTIVAL_TZ) === dayConfig.key)
           .filter(s => new Date(s.end).getTime() > now)
           .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
         if (query) {
@@ -216,11 +198,11 @@ export default function ScheduleScreen() {
         return { stage, slots };
       })
       .filter(({ slots }) => slots.length > 0);
-  }, [stages, dayConfig.date, query, myScheduleOnly, activeStageId, myGoingPicks, now]);
+  }, [stages, dayConfig?.key, FESTIVAL_TZ, query, myScheduleOnly, activeStageId, myGoingPicks, now]);
 
   return (
     <SafeAreaView style={styles.container}>
-      <RNDVUHeader title="Lineup" subtitle="Coachella W2" />
+      <RNDVUHeader title="Lineup" subtitle={config.festival.shortName} />
       <ConnectionBar />
 
       {/* Search bar */}
@@ -254,9 +236,9 @@ export default function ScheduleScreen() {
 
       {/* Day selector */}
       <View style={styles.daySelector}>
-        {FESTIVAL_DAYS.map((day, i) => (
+        {days.map((day, i) => (
           <TouchableOpacity
-            key={day.label}
+            key={day.key}
             style={[styles.dayTab, selectedDay === i && styles.dayTabActive]}
             onPress={() => setSelectedDay(i)}
           >
@@ -290,7 +272,9 @@ export default function ScheduleScreen() {
         {filteredStageData.length === 0 && (
           <View style={styles.emptyFilter}>
             <Text style={styles.emptyFilterText}>
-              {myScheduleOnly ? 'No sets marked "Going" for this day' : 'No matching artists'}
+              {stages.length === 0
+                ? `The ${config.festival.shortName} lineup isn't in the app yet.`
+                : myScheduleOnly ? 'No sets marked "Going" for this day' : 'No matching artists'}
             </Text>
           </View>
         )}

@@ -178,7 +178,8 @@ export default function ChatScreen() {
     const stages = festivalConfig.getAllStages();
     setMeetupLocation(stages.length > 0 ? stages[0].id : '');
     setMeetupCustomLocation('');
-    setMeetupLocationMode('stage');
+    // No stage data for this festival yet: start on a typed place instead.
+    setMeetupLocationMode(stages.length > 0 ? 'stage' : 'custom');
     setMeetupPinCoord(null);
     setMeetupHour12(8);
     setMeetupAmPm('PM');
@@ -401,12 +402,14 @@ export default function ChatScreen() {
             <Text style={styles.meetupLabel}>LOCATION</Text>
             {/* Mode tabs */}
             <View style={styles.locationModeRow}>
-              <TouchableOpacity
-                style={[styles.locationModeTab, meetupLocationMode === 'stage' && styles.locationModeTabActive]}
-                onPress={() => setMeetupLocationMode('stage')}
-              >
-                <Text style={[styles.locationModeText, meetupLocationMode === 'stage' && styles.locationModeTextActive]}>Stage</Text>
-              </TouchableOpacity>
+              {stages.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.locationModeTab, meetupLocationMode === 'stage' && styles.locationModeTabActive]}
+                  onPress={() => setMeetupLocationMode('stage')}
+                >
+                  <Text style={[styles.locationModeText, meetupLocationMode === 'stage' && styles.locationModeTextActive]}>Stage</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={[styles.locationModeTab, meetupLocationMode === 'custom' && styles.locationModeTabActive]}
                 onPress={() => setMeetupLocationMode('custom')}

@@ -10,6 +10,26 @@ import { useCrewStore } from '../store/useCrewStore';
 import { bleService } from '../services/ble/BleManager';
 import { regionName, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK } from '../services/ble/MeshtasticCodec';
 import { timeAgo } from '../utils/time';
+import { useFestivalStore } from '../store/useFestivalStore';
+import { BUNDLED_FESTIVALS } from '../services/festival/festivals';
+import type { SelectionReason } from '../services/festival/FestivalSelection';
+
+const AUTO_REASON_TEXT: Record<SelectionReason, string> = {
+  override: 'chosen manually',
+  location: "you're at this venue",
+  date: 'happening now',
+  upcoming: 'next on the calendar',
+  latest: 'most recent',
+};
+
+function formatFestivalDates(start: string, end: string, timeZone: string): string {
+  const fmt = new Intl.DateTimeFormat('en-US', { timeZone, month: 'short', day: 'numeric' });
+  // dates.end is midnight after the last day.
+  const last = new Date(new Date(end).getTime() - 1);
+  const a = fmt.format(new Date(start));
+  const b = fmt.format(last);
+  return a === b ? a : `${a} – ${b}`;
+}
 
 const STATUS_META: Record<string, { label: string; color: string; hint: string }> = {
   connected:    { label: 'Connected',     color: Colors.success, hint: 'Your T-Echo is linked and ready.' },
@@ -39,6 +59,9 @@ export default function DeviceScreen() {
   const region = useDeviceStore(s => s.region);
   const keyFingerprint = useDeviceStore(s => s.channelKeyFingerprint);
   const [busy, setBusy] = useState(false);
+  const activeFestivalId = useFestivalStore(s => s.activeId);
+  const festivalReason = useFestivalStore(s => s.reason);
+  const festivalOverride = useFestivalStore(s => s.overrideId);
 
   const close = () => useDeviceStore.getState().setDeviceSheetOpen(false);
   const meta = STATUS_META[status] ?? STATUS_META.disconnected;
@@ -203,6 +226,39 @@ export default function DeviceScreen() {
             </TouchableOpacity>
           )}
 
+          <Text style={styles.sectionTitle}>FESTIVAL</Text>
+          <View style={styles.diag}>
+            <TouchableOpacity
+              style={styles.festivalRow}
+              onPress={() => useFestivalStore.getState().setOverride(null)}
+            >
+              <Text style={styles.radio}>{festivalOverride === null ? '●' : '○'}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.festivalName}>Automatic</Text>
+                <Text style={styles.actionSub}>
+                  Picks by date and where you are
+                  {festivalOverride === null ? ` · now ${BUNDLED_FESTIVALS.find(c => c.festival.id === activeFestivalId)?.festival.shortName} (${AUTO_REASON_TEXT[festivalReason]})` : ''}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            {BUNDLED_FESTIVALS.map(c => (
+              <TouchableOpacity
+                key={c.festival.id}
+                style={styles.festivalRow}
+                onPress={() => useFestivalStore.getState().setOverride(c.festival.id)}
+              >
+                <Text style={styles.radio}>{festivalOverride === c.festival.id ? '●' : '○'}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.festivalName}>{c.festival.name}</Text>
+                  <Text style={styles.actionSub}>
+                    {formatFestivalDates(c.festival.dates.start, c.festival.dates.end, c.festival.timezone)}
+                    {c.venue.name ? ` · ${c.venue.name}` : ''}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <Text style={styles.sectionTitle}>TROUBLESHOOTING</Text>
 
           <TouchableOpacity style={styles.action} onPress={handleReprovision}>
@@ -302,6 +358,9 @@ const styles = StyleSheet.create({
   danger: { borderColor: Colors.error + '44' },
   actionTitle: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textPrimary },
   actionSub: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 3 },
+  festivalRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  radio: { fontSize: FontSize.md, color: Colors.primary, width: 18 },
+  festivalName: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textPrimary },
   diag: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.md,
