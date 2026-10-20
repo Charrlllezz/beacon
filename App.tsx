@@ -12,7 +12,7 @@ import TabNavigator from './src/navigation/TabNavigator';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import DeviceScreen from './src/screens/DeviceScreen';
-import { useMessagesStore, flushPendingPersist } from './src/store/useMessagesStore';
+import { useMessagesStore, flushPendingPersist, setPersistImmediately } from './src/store/useMessagesStore';
 import { useDeviceStore, waitForMyNode } from './src/store/useDeviceStore';
 import { useCrewStore } from './src/store/useCrewStore';
 import { useMapCalibrationStore } from './src/store/useMapCalibrationStore';
@@ -20,7 +20,12 @@ import { useTagStore } from './src/store/useTagStore';
 import { useScheduleStore } from './src/store/useScheduleStore';
 import { bleService } from './src/services/ble/BleManager';
 import { RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK } from './src/services/ble/MeshtasticCodec';
-import { routeFromRadio } from './src/services/ble/PacketRouter';
+import { routeFromRadio, onMeshMessage } from './src/services/ble/PacketRouter';
+import {
+  configureNotifications,
+  notifyForMessage,
+  requestNotificationPermission,
+} from './src/services/notifications/LocalNotifications';
 
 const DISPLAY_NAME_KEY = 'rndvu_display_name';
 const ONBOARDING_COMPLETE_KEY = 'rndvu_onboarding_complete';
@@ -48,7 +53,7 @@ export default function App() {
   const loadAnchors = useMapCalibrationStore(s => s.loadAnchors);
   const loadTags = useTagStore(s => s.loadTags);
   const loadMyGoingPicks = useScheduleStore(s => s.loadMyGoingPicks);
-  const unsubRef = useRef<{ packet?: () => void; status?: () => void }>({});
+  const unsubRef = useRef<{ packet?: () => void; status?: () => void; notify?: () => void }>({});
   const gpsSubRef = useRef<Location.LocationSubscription | null>(null);
 
   useEffect(() => {
@@ -67,18 +72,35 @@ export default function App() {
       useDeviceStore.getState().setStatus(status);
     });
 
+    // Local notifications for crew messages that arrive while backgrounded.
+    // The policy (NotificationPolicy) decides; foreground arrivals stay silent.
+    configureNotifications();
+    unsubRef.current.notify = onMeshMessage((message) => {
+      notifyForMessage(message, useDeviceStore.getState().myNodeNum);
+    });
+
+    // We may be starting in the background (iOS relaunching us for a BLE
+    // event via state restoration), so sync app-state-dependent behaviour now
+    // rather than waiting for the first AppState change.
+    const startedActive = AppState.currentState === 'active';
+    bleService.setAppActive(startedActive);
+    setPersistImmediately(!startedActive);
+
     loadMessages();
     loadMyColor();
     loadCrewMembers();
     loadAnchors();
     loadTags();
     loadMyGoingPicks();
-    startPhoneGps();
+    // Phone GPS is foreground-only (battery); a background relaunch skips it
+    // and the 'active' transition below starts it.
+    if (startedActive) startPhoneGps();
     loadOnboardingStateAndReconnect();
 
     return () => {
       unsubRef.current.packet?.();
       unsubRef.current.status?.();
+      unsubRef.current.notify?.();
       stopPhoneGps();
     };
   }, []);
@@ -129,44 +151,61 @@ export default function App() {
     }
   }
 
-  // T-Echo holds only one BLE central at a time. On background, release the
-  // slot so the Meshtastic app (for OTA, debug, or anything we haven't ported
-  // into RNDVU) can connect cleanly. On foreground, reconnect via saved
-  // lastDevice. Gated on onboardingComplete so initial pairing isn't disturbed
-  // by a mid-flow background event.
+  // Background: KEEP the radio. A phone locked in a pocket is the normal case
+  // at a festival, and iOS (bluetooth-central background mode) keeps the GATT
+  // session up and wakes us per FROM_NUM notify, so messages, rally points and
+  // SOS still arrive and notify. Handing the radio to the Meshtastic app is now
+  // an explicit Release Device tap (DeviceScreen), not a side effect of
+  // switching apps. Phone GPS still stops: peers see us via the T-Echo's own
+  // position broadcasts, which never depended on the phone.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background') {
+        // Flush the message buffer so the last few seconds survive a suspend/kill,
+        // and write background arrivals immediately from here on.
+        setPersistImmediately(true);
+        flushPendingPersist();
+        stopPhoneGps();
+        bleService.setAppActive(false);
+      } else if (nextState === 'active') {
+        setPersistImmediately(false);
+        bleService.setAppActive(true);
+        startPhoneGps();
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  // On foreground, reconnect via saved lastDevice if the link is down (and the
+  // user didn't release it). Gated on onboardingComplete so initial pairing
+  // isn't disturbed by a mid-flow app switch.
   useEffect(() => {
     if (!onboardingComplete) return;
     const sub = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'background') {
-        // Flush the message buffer so the last few seconds survive a suspend/kill.
-        flushPendingPersist();
-        // Stop the GPS watcher while backgrounded (we release the BLE slot too)
-        // and re-acquire on foreground.
-        stopPhoneGps();
-        const { status } = useDeviceStore.getState();
-        if (status === 'connected' || status === 'connecting' || status === 'reconnecting') {
-          bleService.disconnect();
-        }
-      } else if (nextState === 'active') {
-        startPhoneGps();
+      if (nextState === 'active') {
         reconnectOnForeground();
+        // Users who onboarded before notifications existed get asked here
+        // (no-op once answered).
+        requestNotificationPermission();
       }
     });
     return () => sub.remove();
   }, [onboardingComplete]);
 
   async function reconnectOnForeground() {
-    const { status } = useDeviceStore.getState();
+    const { status, released } = useDeviceStore.getState();
+    if (released) return;
     if (status === 'connected' || status === 'connecting' || status === 'reconnecting') return;
     const lastDevice = await useDeviceStore.getState().loadLastDevice();
     if (!lastDevice) return;
     useDeviceStore.getState().setStatus('reconnecting');
     useDeviceStore.getState().setConnectedDevice(lastDevice.id, lastDevice.name);
     try {
-      await bleService.connect(lastDevice.id);
-    } catch {
-      useDeviceStore.getState().setStatus('disconnected');
-    }
+      // autoRetry: if the radio is out of range, keep waiting for it (through
+      // a later background stretch too) rather than giving up here. Status
+      // updates come from the BLE layer.
+      await bleService.connect(lastDevice.id, { autoRetry: true });
+    } catch {}
   }
 
   async function startPhoneGps() {
@@ -207,6 +246,9 @@ export default function App() {
 
     if (hasOnboarded) {
       setOnboardingComplete(true);
+      // Covers users who onboarded before notifications existed. Only when
+      // visible: a background relaunch can't show the prompt.
+      if (AppState.currentState === 'active') requestNotificationPermission();
     }
     setIsLoading(false);
 
@@ -223,7 +265,10 @@ export default function App() {
     try {
       useDeviceStore.getState().setStatus('reconnecting');
       useDeviceStore.getState().setConnectedDevice(lastDevice.id, lastDevice.name);
-      await bleService.connect(lastDevice.id);
+      // autoRetry: radio off or out of range at launch → keep trying, and hand
+      // off to a pending connect once backgrounded. Also adopts a link iOS
+      // restored when it relaunched us in the background.
+      await bleService.connect(lastDevice.id, { autoRetry: true });
 
       // Re-apply display name — both locally and on the device. The setOwner
       // write ensures the T-Echo broadcasts the RNDVU name over NodeInfo so
@@ -246,8 +291,8 @@ export default function App() {
         })();
       }
     } catch (error) {
-      console.warn('Auto-reconnect failed:', error);
-      useDeviceStore.getState().setStatus('disconnected');
+      // Retries continue in the BLE layer, which owns the status from here.
+      console.warn('Auto-reconnect failed (retrying):', error);
     }
   }
 

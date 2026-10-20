@@ -35,6 +35,10 @@ interface DeviceState {
   // Whether the Device/Connection troubleshooting sheet is open. Opened from the
   // tappable ConnectionBar and the header gear; rendered once at the app root.
   deviceSheetOpen: boolean;
+  // The user tapped Release Device to hand the radio to another app. While
+  // set, foregrounding RNDVU must not grab it back; only Reconnect (or a cold
+  // launch) clears it. In-memory on purpose: a relaunch should reconnect.
+  released: boolean;
 
   setStatus: (status: ConnectionStatus) => void;
   setConnectedDevice: (id: string, name: string) => void;
@@ -48,6 +52,7 @@ interface DeviceState {
   setRegion: (region: number | null) => void;
   setChannelKeyFingerprint: (fp: string | null) => void;
   setDeviceSheetOpen: (open: boolean) => void;
+  setReleased: (released: boolean) => void;
   disconnect: () => void;
   saveLastDevice: () => void;
   loadLastDevice: () => Promise<{ id: string; name: string } | null>;
@@ -69,6 +74,7 @@ export const useDeviceStore = create<DeviceState>((set) => ({
   region: null,
   channelKeyFingerprint: null,
   deviceSheetOpen: false,
+  released: false,
 
   setStatus: (status) => set({ status }),
   setConnectedDevice: (id, name) =>
@@ -94,6 +100,7 @@ export const useDeviceStore = create<DeviceState>((set) => ({
   setRegion: (region) => set({ region }),
   setChannelKeyFingerprint: (channelKeyFingerprint) => set({ channelKeyFingerprint }),
   setDeviceSheetOpen: (deviceSheetOpen) => set({ deviceSheetOpen }),
+  setReleased: (released) => set({ released }),
   disconnect: () =>
     set({
       status: 'disconnected',
