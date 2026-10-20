@@ -7,7 +7,6 @@ import { useMessagesStore } from '../../store/useMessagesStore';
 import { useCrewStore } from '../../store/useCrewStore';
 import { useDeviceStore } from '../../store/useDeviceStore';
 import { useScheduleStore } from '../../store/useScheduleStore';
-import { useMapCalibrationStore } from '../../store/useMapCalibrationStore';
 import { useTagStore } from '../../store/useTagStore';
 import { latLngFromI } from '../../utils/coordinates';
 
@@ -147,12 +146,10 @@ function routePacket(packet: MeshPacket, myNodeNum: number | null): void {
   switch (portnum) {
     case PortNum.TEXT_MESSAGE_APP: {
       const text = decodeTextMessage(payload);
+      // Beacon-era map calibration (MF:C). Nothing uses it any more; drop it
+      // quietly so an old build on the channel doesn't put raw MF:C text in chat.
+      if (text.startsWith('MF:C:')) break;
       const message = parseMessage(text, packet.from, fromName, timestamp, packet.channel);
-      // TEMP DIAG (remove once the structured-message render bug is confirmed
-      // fixed): in Console.app, '[RNDVU-DIAG] rx parsed as rally' confirms a
-      // received MF: message reached routing + was added. Absence => it never
-      // arrived/was read; 'text' for an MF: payload => a parse problem.
-      console.warn('[RNDVU-DIAG] rx parsed as', message.type, 'from', packet.from.toString(16));
 
       if (message.type === 'color') {
         useCrewStore.getState().updateColor(packet.from, message.color);
@@ -178,10 +175,6 @@ function routePacket(packet: MeshPacket, myNodeNum: number | null): void {
           artistId: message.artistId,
           timestamp: Date.now(),
         });
-      }
-
-      if (message.type === 'calibration') {
-        useMapCalibrationStore.getState().setAnchors(message.anchors);
       }
 
       if (message.type === 'tag') {

@@ -73,6 +73,13 @@ describe('useMessagesStore persistence', () => {
     expect(storedIds()).toEqual(['fg-1']);
   });
 
+  test('drops Beacon-era calibration entries persisted by older builds', async () => {
+    const legacy = { id: 'cal', type: 'calibration', anchors: {}, fromNodeId: 1, fromName: 'x', timestamp: 0, channelIndex: 0 };
+    storage.data.set(KEY, JSON.stringify([msg('keep'), legacy]));
+    await useMessagesStore.getState().loadMessages();
+    expect(useMessagesStore.getState().messages.map(m => m.id)).toEqual(['keep']);
+  });
+
   test('flush before history has loaded is a no-op', async () => {
     storage.data.set(KEY, JSON.stringify([msg('old')]));
     useMessagesStore.getState().addMessage(msg('early'));

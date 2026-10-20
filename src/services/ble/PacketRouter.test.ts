@@ -13,6 +13,7 @@ import { PortNum } from '../../types/mesh';
 import type { FromRadio } from '../../types/mesh';
 import type { Message } from '../../types/messages';
 import { useCrewStore } from '../../store/useCrewStore';
+import { useMessagesStore } from '../../store/useMessagesStore';
 
 const ME = 0x5e6f7a;
 const PEER = 0xa1b2c3;
@@ -53,6 +54,16 @@ describe('PacketRouter onMeshMessage', () => {
     off();
     routeFromRadio(textPacket('after unsubscribe'), ME);
     expect(seen).toHaveLength(2);
+  });
+
+  test('legacy MF:C (Beacon map calibration) from an old build is dropped, not shown as text', () => {
+    const seen: Message[] = [];
+    const off = onMeshMessage(m => seen.push(m));
+    const before = useMessagesStore.getState().messages.length;
+    expect(() => routeFromRadio(textPacket('MF:C:33.680000,-116.240000:33.670000,-116.230000'), ME)).not.toThrow();
+    expect(seen).toEqual([]);
+    expect(useMessagesStore.getState().messages.length).toBe(before);
+    off();
   });
 
   test('a throwing listener does not break routing', () => {
