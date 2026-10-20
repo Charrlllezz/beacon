@@ -158,6 +158,9 @@ function decodeConfig(bytes: Uint8Array): DeviceConfig {
   return config;
 }
 
+/** ModuleSettings.position_precision value for "share exact position". */
+export const POSITION_PRECISION_EXACT = 32;
+
 function decodeChannel(bytes: Uint8Array): Channel {
   const fields = parseFields(bytes);
   const channel: Channel = { index: 0 };
@@ -167,6 +170,13 @@ function decodeChannel(bytes: Uint8Array): Channel {
     channel.settings = {
       name: sf.has(3) ? decodeString(sf.get(3)![0]) : undefined,
     };
+    // ChannelSettings.module_settings = field 7 { position_precision = 1 }.
+    // Present-but-empty means 0 (proto3 default); absent stays undefined,
+    // which firmware ≥2.7.24 also treats as 0 (no position broadcasts).
+    if (sf.has(7)) {
+      const ms = parseFields(sf.get(7)![0]);
+      channel.settings.positionPrecision = ms.has(1) ? varintVal(ms.get(1)![0]) : 0;
+    }
     // ChannelSettings.psk = field 2 — hash to a fingerprint (never store the key).
     if (sf.has(2)) channel.keyFingerprint = pskFingerprint(sf.get(2)![0]);
   }
@@ -390,6 +400,13 @@ function encodeChannel(index: number, name: string, psk: Uint8Array, role: numbe
   const settings = concat(
     lenField(2, psk),        // ChannelSettings.psk = field 2
     lenField(3, nameBytes),  // ChannelSettings.name = field 3
+    // ChannelSettings.module_settings = field 7 { position_precision = 1 }.
+    // Must be explicit: since firmware 2.7.24 a channel without
+    // module_settings "fails closed" to precision 0, which means the radio
+    // never broadcasts its position and crew pins silently disappear
+    // (PositionPrecision.cpp, firmware #10513). 32 = exact position; the
+    // channel has a private key, so firmware doesn't cap it.
+    lenField(7, varField(1, POSITION_PRECISION_EXACT)),
   );
   return concat(
     varField(1, index),      // Channel.index
@@ -719,11 +736,15 @@ export function encodeChannelMessage(channel: {
   index: number;
   name?: string;
   role?: number;
+  positionPrecision?: number; // undefined = no module_settings on the channel
 }): Uint8Array {
   const parts: Uint8Array[] = [varField(1, channel.index)];
-  if (channel.name) {
-    parts.push(lenField(2, stringField(3, channel.name))); // settings { name }
+  const settings: Uint8Array[] = [];
+  if (channel.name) settings.push(stringField(3, channel.name));
+  if (channel.positionPrecision !== undefined) {
+    settings.push(lenField(7, channel.positionPrecision ? varField(1, channel.positionPrecision) : new Uint8Array(0)));
   }
+  if (settings.length) parts.push(lenField(2, concat(...settings)));
   if (channel.role !== undefined) parts.push(varField(3, channel.role));
   return concat(...parts);
 }

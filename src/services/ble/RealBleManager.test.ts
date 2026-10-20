@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { FromRadio } from '../../types/mesh';
 import { PortNum } from '../../types/mesh';
-import { decodeTextMessage } from './MeshtasticCodec';
+import { decodeTextMessage, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK } from './MeshtasticCodec';
 
 // RealBleManager against a fake ble-plx backed by MockFirmware (see
 // testing/FakeBlePlx). Exercises the real connect / config drain / notify
@@ -19,6 +19,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
 
 import { resetWorld } from './testing/FakeBlePlx';
 import { RealBleManager } from './RealBleManager';
+import { useDeviceStore } from '../../store/useDeviceStore';
 
 const PEER = 0xa1b2c3;
 
@@ -232,6 +233,17 @@ describe('RealBleManager (fake ble-plx over MockFirmware)', () => {
     w.comeBackIntoRange();
     await vi.advanceTimersByTimeAsync(40_000);
     expect(statuses.at(-1)).toBe('connected');
+  });
+
+  test('Re-provision on a radio from an older build turns location sharing back on', async () => {
+    w.firmware.primaryChannel.positionPrecision = undefined; // no module_settings
+    await connectAndSettle();
+    useDeviceStore.getState().setMyNodeInfo({ myNodeNum: w.firmware.myNodeNum } as any);
+    const p = mgr.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK, 1);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await p;
+    expect(w.firmware.primaryChannel.positionPrecision).toBe(32);
+    expect(w.firmware.loraConfig.region).toBe(1);
   });
 
   test('without autoRetry (onboarding), a failed connect stays failed', async () => {

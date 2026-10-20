@@ -55,6 +55,9 @@ export function routeFromRadio(fromRadio: FromRadio, myNodeNum: number | null): 
     if (fromRadio.channel.keyFingerprint) {
       useDeviceStore.getState().setChannelKeyFingerprint(fromRadio.channel.keyFingerprint);
     }
+    // Whether this radio broadcasts its position at all (see
+    // isSharingLocation): surfaced in the Device sheet, fixed by Re-provision.
+    useDeviceStore.getState().setPositionPrecision(fromRadio.channel.settings?.positionPrecision ?? null);
   }
 
   // LoRa region from the device config drain — surfaced in the Device sheet so a

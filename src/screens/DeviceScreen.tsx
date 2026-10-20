@@ -10,6 +10,7 @@ import { useCrewStore } from '../store/useCrewStore';
 import { bleService } from '../services/ble/BleManager';
 import { regionName, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK } from '../services/ble/MeshtasticCodec';
 import { timeAgo } from '../utils/time';
+import { isSharingLocation } from '../utils/firmware';
 import { useFestivalStore } from '../store/useFestivalStore';
 import { BUNDLED_FESTIVALS } from '../services/festival/festivals';
 import type { SelectionReason } from '../services/festival/FestivalSelection';
@@ -58,6 +59,7 @@ export default function DeviceScreen() {
   const lastPacketAt = useDeviceStore(s => s.lastPacketAt);
   const region = useDeviceStore(s => s.region);
   const keyFingerprint = useDeviceStore(s => s.channelKeyFingerprint);
+  const positionPrecision = useDeviceStore(s => s.positionPrecision);
   const [busy, setBusy] = useState(false);
   const activeFestivalId = useFestivalStore(s => s.activeId);
   const festivalReason = useFestivalStore(s => s.reason);
@@ -162,7 +164,7 @@ export default function DeviceScreen() {
     }
     Alert.alert(
       'Re-provision device?',
-      'Re-applies the RNDVU channel, encryption key, US region, and your name to this radio. It reboots and reconnects (~15-20s). Use this if Region shows UNSET or the channel/key looks wrong.',
+      'Re-applies the RNDVU channel, encryption key, US region, and your name to this radio. It reboots and reconnects (~15-20s). Use this if Region shows UNSET, Location sharing shows off, or the channel/key looks wrong.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -193,6 +195,11 @@ export default function DeviceScreen() {
   const lastHeard = lastPacketAt ? timeAgo(Math.floor(lastPacketAt / 1000)) : 'never';
   // region 0 / null = UNSET → the radio receives but won't transmit. Flag it.
   const regionBad = region == null || region === 0;
+  // Radio not broadcasting its position → crew can't see this person on the
+  // map. Happens on firmware ≥2.7.24 with a channel written by an RNDVU build
+  // that predates the precision fix. Re-provision rewrites the channel.
+  const sharing = isSharingLocation(positionPrecision, firmwareVersion);
+  const sharingOff = sharing === false;
 
   return (
     <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
@@ -262,8 +269,8 @@ export default function DeviceScreen() {
           <Text style={styles.sectionTitle}>TROUBLESHOOTING</Text>
 
           <TouchableOpacity style={styles.action} onPress={handleReprovision}>
-            <Text style={styles.actionTitle}>{regionBad ? '⚠ Re-provision Device' : 'Re-provision Device'}</Text>
-            <Text style={styles.actionSub}>Re-apply the RNDVU channel, key, US region, and your name. Fixes an UNSET region or wrong channel/key — no factory reset or re-pair needed.</Text>
+            <Text style={styles.actionTitle}>{regionBad || sharingOff ? '⚠ Re-provision Device' : 'Re-provision Device'}</Text>
+            <Text style={styles.actionSub}>Re-apply the RNDVU channel, key, US region, and your name. Fixes an UNSET region, location sharing off, or a wrong channel/key — no factory reset or re-pair needed.</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.action} onPress={handleRelease}>
@@ -287,6 +294,12 @@ export default function DeviceScreen() {
               <Text style={styles.k}>Region</Text>
               <Text style={[styles.vMono, regionBad && { color: Colors.error }]}>
                 {regionName(region)}{regionBad ? " — won't transmit" : ''}
+              </Text>
+            </View>
+            <View style={styles.kv}>
+              <Text style={styles.k}>Location sharing</Text>
+              <Text style={[styles.vMono, sharingOff && { color: Colors.error }]}>
+                {sharing === null ? '—' : sharing ? 'on' : "off — crew can't see you"}
               </Text>
             </View>
             <View style={styles.kv}><Text style={styles.k}>Channel key</Text><Text style={styles.vMono}>{keyFingerprint ?? '—'}</Text></View>

@@ -106,6 +106,9 @@ export interface DeviceConfig {
 
 export interface ChannelSettings {
   name?: string;
+  // module_settings.position_precision; undefined when the channel carries no
+  // module_settings at all. 0 = no position broadcasts, 32 = exact.
+  positionPrecision?: number;
   // psk/id intentionally omitted — we don't need to expose the raw key or
   // globally-unique id in app-side state.
 }
