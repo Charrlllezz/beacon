@@ -28,7 +28,7 @@ interactive simulator:
 | --- | --- |
 | Config drain | The codec decodes the firmware's startup dump: version, node number, config-complete |
 | Pairing | Region US, the RNDVU channel with position precision 32, channels 1–7 off, and reconnect after the reboot |
-| Names | `setOwner` is accepted on all three nodes |
+| Names | `setOwner` is accepted on all three nodes. On 2.7.26 it also reboots the radio, and the app reconnects |
 | Text a → c | A message from the app reaches b directly and c over two hops |
 | Text c → app | A crew message lands in the app's message store |
 | Position | A phone-shared position reaches the crew without losing precision |

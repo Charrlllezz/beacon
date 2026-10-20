@@ -58,18 +58,28 @@ async function connectApp(id: string): Promise<void> {
   await mgr.connect(id, { autoRetry: true });
 }
 
-/** The app's pairing sequence, then wait for the radio to reboot and the app to reconnect. */
-async function provision(id: string): Promise<number> {
-  await connectApp(id);
+/**
+ * Run an admin step that reboots the radio, then wait for the reboot and the
+ * app's reconnect + config drain. Returns the packet index the new drain starts at.
+ */
+async function rebootingStep(id: string, step: () => Promise<void>): Promise<number> {
   statuses = [];
-  await mgr.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK);
   const mark = packets.length;
+  await step();
   await mesh.waitFor(
-    () => since(mark).some(p => p.configCompleteId !== undefined) && statuses.includes('reconnecting'),
+    () => statuses.includes('reconnecting') &&
+      since(mark).some(p => p.configCompleteId !== undefined) &&
+      statuses.at(-1) === 'connected',
     90000,
     `${id} to reboot and the app to reconnect`,
   );
   return mark;
+}
+
+/** The app's pairing step; the radio reboots at the end of it. */
+async function provision(id: string): Promise<number> {
+  await connectApp(id);
+  return rebootingStep(id, () => mgr.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK));
 }
 
 function textsFrom(id: string, from: number): string[] {
@@ -147,14 +157,17 @@ describe(`RNDVU against meshtasticd ${FLEET_FIRMWARE} (sim)`, () => {
     mgr.disconnect();
   });
 
-  test('provision b and c, set names', async () => {
+  test('provision b and c, set names (setting a name reboots the radio)', async () => {
+    // Firmware 2.7.26 reboots after set_owner outside an edit transaction
+    // (AdminModule::saveChanges), so pairing is two reboots, and anything sent
+    // in the few seconds after naming is lost.
     for (const [id, long, short] of [['b', 'Bea', 'BEA'], ['c', 'Cal', 'CAL']] as const) {
       await provision(id);
-      await mgr.setOwner(long, short);
+      await rebootingStep(id, () => mgr.setOwner(long, short));
       mgr.disconnect();
     }
     await connectApp('a');
-    await mgr.setOwner('Ash', 'ASH');
+    await rebootingStep('a', () => mgr.setOwner('Ash', 'ASH'));
   });
 
   test('a text from the app reaches b directly and c over two hops', async () => {
