@@ -344,9 +344,10 @@ export function encodeWantConfig(configId: number): Uint8Array {
 }
 
 /**
- * ToRadio.heartbeat — an empty message in field 7. Writing this periodically
- * prevents the firmware's phone_timeout_secs from disconnecting the BLE link
- * when the app is idle.
+ * ToRadio.heartbeat — an empty message in field 7. A keepalive the firmware
+ * answers with a queue-status frame. Over BLE on nRF52 the firmware's
+ * connection check is the physical link itself, not an idle timer, so missing
+ * heartbeats (e.g. while iOS has the app suspended) doesn't drop the phone.
  */
 export function encodeHeartbeat(): Uint8Array {
   return lenField(7, new Uint8Array(0));

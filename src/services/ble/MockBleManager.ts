@@ -69,7 +69,11 @@ export class MockBleManager {
     return [{ id: 'mock-device-001', name: 'Meshtastic_MOCK' }];
   }
 
-  async connect(_deviceId: string): Promise<void> {
+  // Mock never loses the link on its own except via simulateDrop/reboot, which
+  // reconnect themselves, so autoRetry and app-state have nothing to drive.
+  setAppActive(_active: boolean): void {}
+
+  async connect(_deviceId: string, _opts: { autoRetry?: boolean } = {}): Promise<void> {
     // Clean slate on each connect (e.g., after a simulated reboot or the
     // user tapping Reconnect).
     this.stopTimers();

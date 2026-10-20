@@ -1,4 +1,4 @@
-import { BleManager, Device, Subscription } from 'react-native-ble-plx';
+import { BleManager, Device, State, Subscription } from 'react-native-ble-plx';
 import { Platform } from 'react-native';
 import type { FromRadio } from '../../types/mesh';
 import {
@@ -14,6 +14,23 @@ export type PacketCallback = (fromRadio: FromRadio) => void;
 export type StatusCallback = (status: 'connected' | 'disconnected' | 'reconnecting') => void;
 
 const CONFIG_ID = 42;
+const CONNECT_TIMEOUT_MS = 20000;
+const PENDING_CONNECT_RETRY_MS = 15000;
+// CoreBluetooth state-restoration key. Lets iOS relaunch RNDVU in the
+// background for a BLE event (radio sent a packet, pending connect completed)
+// after the system killed the suspended app. Ignored on Android.
+const RESTORE_STATE_ID = 'rndvu-ble-central';
+
+export interface ConnectOptions {
+  /**
+   * Keep trying after this attempt fails: fast backoff while foregrounded,
+   * then a pending connect that iOS completes whenever the radio is back.
+   * For "this is my radio, stay with it" callers (cold launch, foreground,
+   * Reconnect). Onboarding leaves it off so a failed pick doesn't connect
+   * behind the user's back.
+   */
+  autoRetry?: boolean;
+}
 
 /**
  * Thrown by writeAdmin when the BLE link drops partway through a provisioning
@@ -45,9 +62,45 @@ export class RealBleManager {
   private lastDeviceId: string | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
+  // Bumped by every connect attempt and by disconnect(). A connect whose
+  // generation is stale was superseded (Release, Reconnect tap, cancelled
+  // pending connect) and must not touch shared state when it settles.
+  private connectGen = 0;
+  // Device id of a connectToDevice that hasn't resolved yet, so disconnect()
+  // can cancel it. Matters for no-timeout pending connects, which otherwise
+  // stay queued in CoreBluetooth indefinitely.
+  private pendingConnectId: string | null = null;
+  private appActive = true;
+  private draining = false;
+  private drainAgain = false;
 
   constructor() {
-    this.manager = new BleManager();
+    this.manager = new BleManager({
+      restoreStateIdentifier: RESTORE_STATE_ID,
+      restoreStateFunction: (restored) => {
+        // Nothing to rebuild here: App.tsx runs its normal cold-launch
+        // reconnect, and connect() adopts a peripheral iOS already holds
+        // connected instead of dialing it again (see acquireDevice).
+        const n = restored?.connectedPeripherals?.length ?? 0;
+        if (n > 0) console.log(`BLE state restored with ${n} connected peripheral(s)`);
+      },
+    });
+  }
+
+  /**
+   * App foreground/background signal from App.tsx. Timers don't run while iOS
+   * has us suspended, so in the background a lost link is handed straight to
+   * a no-timeout pending connect (iOS completes it and wakes us) instead of
+   * the timer-driven backoff.
+   */
+  setAppActive(active: boolean): void {
+    this.appActive = active;
+    if (!active && this.reconnectTimer && !this.isConnected) {
+      // A backoff retry is queued on a JS timer that won't fire while
+      // suspended. Swap it for a pending connect.
+      this.clearReconnectTimer();
+      this.runReconnect(null);
+    }
   }
 
   onPacket(cb: PacketCallback): () => void {
@@ -124,7 +177,23 @@ export class RealBleManager {
     });
   }
 
-  async connect(deviceId: string): Promise<void> {
+  async connect(deviceId: string, opts: ConnectOptions = {}): Promise<void> {
+    if (opts.autoRetry) this.lastDeviceId = deviceId;
+    try {
+      await this.openSession(deviceId, CONNECT_TIMEOUT_MS);
+    } catch (error) {
+      // Still wanted (not released meanwhile): keep trying in the background.
+      if (opts.autoRetry && this.lastDeviceId === deviceId) this.scheduleReconnect();
+      throw error;
+    }
+  }
+
+  /**
+   * timeoutMs null = a CoreBluetooth pending connect: never times out, survives
+   * the app being suspended, and completes (waking us) when the radio comes
+   * back into range or finishes rebooting.
+   */
+  private async openSession(deviceId: string, timeoutMs: number | null): Promise<void> {
     // Guard against overlapping connect calls. A manual Reconnect tap during
     // an auto-retry used to tangle two in-flight connects.
     if (this.isConnecting) {
@@ -133,22 +202,27 @@ export class RealBleManager {
     }
     this.isConnecting = true;
     this.aborted = false;
+    const gen = ++this.connectGen;
     try {
+      await this.waitForPoweredOn();
       // Connect to device. No MTU negotiation anywhere — bundled requestMTU
       // caused 1-second connect failures on iPhone 13 (older BLE stack),
       // and even post-connect requestMTU caused GATT session teardown ~2
       // seconds in. Meshtastic works fine on default MTU (23 bytes) since
       // our writes are all <200 bytes and BLE fragments transparently.
-      const device = await this.manager.connectToDevice(deviceId, {
-        timeout: 20000,
-      });
+      this.pendingConnectId = deviceId;
+      const device = await this.acquireDevice(deviceId, timeoutMs);
+      if (gen === this.connectGen) this.pendingConnectId = null;
 
-      // If disconnect()/background fired while connectToDevice was in flight,
-      // abandon this connection instead of re-acquiring the single BLE slot
-      // (the T-Echo holds only one central; the user wanted it released).
-      if (this.aborted) {
-        this.manager.cancelDeviceConnection(deviceId).catch(() => {});
-        this.isConnecting = false;
+      // If disconnect() fired while connectToDevice was in flight, abandon
+      // this connection instead of re-acquiring the single BLE slot (the
+      // T-Echo holds only one central; the user wanted it released).
+      if (this.aborted || gen !== this.connectGen) {
+        // ...unless a newer connect already owns this radio: cancelling by
+        // device id would tear down its link too.
+        const newerSessionOwnsIt = this.isConnecting || this.isConnected;
+        if (!newerSessionOwnsIt) this.manager.cancelDeviceConnection(deviceId).catch(() => {});
+        if (gen === this.connectGen) this.isConnecting = false;
         return;
       }
 
@@ -171,14 +245,7 @@ export class RealBleManager {
         this.isConnected = false;
         this.stopPolling();
         this.stopHeartbeat();
-        // Emit 'reconnecting' (not 'disconnected') so the UI shows the retry
-        // loop is active. Only flip to 'disconnected' once attempts exhaust.
-        if (this.lastDeviceId && this.reconnectAttempts < this.maxReconnectAttempts) {
-          this.emitStatus('reconnecting');
-          this.attemptReconnect();
-        } else {
-          this.emitStatus('disconnected');
-        }
+        this.scheduleReconnect();
       });
 
       // Subscribe to fromNum notifications (signals new data available).
@@ -214,8 +281,8 @@ export class RealBleManager {
 
       // If the link dropped during the (up-to-10s) drain, don't start timers or
       // hold a 'connected' claim — let the reconnect path take over cleanly.
-      if (!this.isConnected || this.aborted) {
-        this.isConnecting = false;
+      if (!this.isConnected || this.aborted || gen !== this.connectGen) {
+        if (gen === this.connectGen) this.isConnecting = false;
         return;
       }
 
@@ -227,12 +294,59 @@ export class RealBleManager {
 
       this.isConnecting = false;
     } catch (error) {
+      // Superseded (e.g. disconnect() cancelled this pending connect, and a
+      // newer connect may already own the flags). Stay quiet.
+      if (gen !== this.connectGen) return;
+      this.pendingConnectId = null;
       console.error('BLE connect error:', error);
       this.isConnected = false;
       this.isConnecting = false;
       this.emitStatus('disconnected');
       throw error;
     }
+  }
+
+  /**
+   * Reuse a link iOS already holds (state restoration relaunch, or a JS reload
+   * while the native side stayed connected) rather than dialing again, which
+   * ble-plx rejects as "already connected".
+   */
+  private async acquireDevice(deviceId: string, timeoutMs: number | null): Promise<Device> {
+    try {
+      if (await this.manager.isDeviceConnected(deviceId)) {
+        const [known] = await this.manager.devices([deviceId]);
+        if (known) return known;
+      }
+    } catch {
+      // Unknown id or adapter not ready; fall through to a normal connect.
+    }
+    return this.manager.connectToDevice(
+      deviceId,
+      timeoutMs === null ? undefined : { timeout: timeoutMs },
+    );
+  }
+
+  /**
+   * On a background relaunch the adapter can still be in Unknown/Resetting
+   * when JS starts; connecting then fails outright. Wait briefly for PoweredOn.
+   */
+  private waitForPoweredOn(timeoutMs = 5000): Promise<void> {
+    return new Promise((resolve) => {
+      let done = false;
+      let sub: Subscription | null = null;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        sub?.remove();
+        resolve();
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      sub = this.manager.onStateChange((state) => {
+        if (state === State.PoweredOn) finish();
+      }, true);
+      if (done) sub.remove();
+    });
   }
 
   private async writeAdmin(bytes: Uint8Array): Promise<void> {
@@ -357,7 +471,14 @@ export class RealBleManager {
     // isConnecting so a pending reconnect attempt isn't blocked.
     this.aborted = true;
     this.isConnecting = false;
+    this.connectGen++;
     this.cancelReconnect();
+    // A pending (no-timeout) connect lives in CoreBluetooth until cancelled;
+    // left alone it would grab the radio back after the user released it.
+    if (this.pendingConnectId) {
+      this.manager.cancelDeviceConnection(this.pendingConnectId).catch(() => {});
+      this.pendingConnectId = null;
+    }
     this.stopPolling();
     this.stopHeartbeat();
     this.notifySub?.remove();
@@ -375,39 +496,82 @@ export class RealBleManager {
     this.emitStatus('disconnected');
   }
 
-  private attemptReconnect(): void {
-    if (!this.lastDeviceId || this.reconnectAttempts >= this.maxReconnectAttempts) {
+  /**
+   * Single entry point after the link is lost or a retry fails. Foreground:
+   * exponential backoff with timed connects, as before. Background, or once
+   * the fast retries are spent: one no-timeout pending connect, which iOS keeps
+   * alive while we're suspended and completes when the radio is reachable.
+   * The old behaviour (give up after ten tries) left a locked phone off the
+   * mesh until someone opened the app.
+   */
+  private scheduleReconnect(): void {
+    this.clearReconnectTimer();
+    if (!this.lastDeviceId) {
       this.emitStatus('disconnected');
       return;
     }
 
+    if (!this.appActive || this.reconnectAttempts >= this.maxReconnectAttempts) {
+      // Foreground with retries spent: be honest in the UI ('disconnected'),
+      // but keep waiting for the radio underneath.
+      this.emitStatus(this.appActive ? 'disconnected' : 'reconnecting');
+      this.runReconnect(null);
+      return;
+    }
+
+    // Emit 'reconnecting' (not 'disconnected') so the UI shows the retry
+    // loop is active.
+    this.emitStatus('reconnecting');
     this.reconnectAttempts++;
     // Exponential backoff: 500ms, 1s, 2s, 4s, 8s, capped at 15s. Faster first
     // retry so transient RF drops recover quickly.
     const delay = Math.min(500 * Math.pow(2, this.reconnectAttempts - 1), 15000);
-
-    this.reconnectTimer = setTimeout(async () => {
-      if (this.isConnected || !this.lastDeviceId) return;
-      // A connect() is still parked (e.g. mid config-drain). This was the only
-      // scheduled retry, so re-arm shortly instead of silently giving up —
-      // otherwise a disconnect during connect wedges the UI on 'reconnecting'.
-      if (this.isConnecting) {
-        this.reconnectTimer = setTimeout(() => this.attemptReconnect(), 1000);
-        return;
-      }
-      try {
-        await this.connect(this.lastDeviceId);
-      } catch {
-        this.attemptReconnect();
-      }
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.runReconnect(CONNECT_TIMEOUT_MS);
     }, delay);
   }
 
-  private cancelReconnect(): void {
+  private async runReconnect(timeoutMs: number | null): Promise<void> {
+    if (this.isConnected || !this.lastDeviceId) return;
+    // A connect() is still in flight (e.g. mid config-drain). Re-arm shortly
+    // instead of silently giving up — otherwise a disconnect during connect
+    // wedges the UI on 'reconnecting'.
+    if (this.isConnecting) {
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        this.scheduleReconnect();
+      }, 1000);
+      return;
+    }
+    const deviceId = this.lastDeviceId;
+    try {
+      await this.openSession(deviceId, timeoutMs);
+    } catch {
+      // Released or re-targeted while we were trying: stop here.
+      if (this.lastDeviceId !== deviceId) return;
+      if (timeoutMs === null) {
+        // A pending connect only fails fast for a reason that won't clear on
+        // its own right away (Bluetooth off, unknown peripheral). Don't spin.
+        this.reconnectTimer = setTimeout(() => {
+          this.reconnectTimer = null;
+          this.scheduleReconnect();
+        }, PENDING_CONNECT_RETRY_MS);
+        return;
+      }
+      this.scheduleReconnect();
+    }
+  }
+
+  private clearReconnectTimer(): void {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+  }
+
+  private cancelReconnect(): void {
+    this.clearReconnectTimer();
     this.reconnectAttempts = 0;
   }
 
@@ -453,13 +617,31 @@ export class RealBleManager {
    * right away instead of trickling out one-per-5s-poll. Each readFromRadio is a
    * BLE round-trip (naturally paced), capped so a misbehaving radio can't spin.
    * The isReading guard keeps overlapping drains from double-reading a frame.
+   *
+   * A notify that lands while a drain is already running sets drainAgain
+   * rather than being dropped: the running drain may have just read "empty"
+   * before that frame was queued. In the foreground the 5s poll used to paper
+   * over this; in the background the poll timer doesn't run, so the frame
+   * would sit until the next packet happened to wake us.
    */
   private async drainPending(): Promise<void> {
-    let reads = 0;
-    while (reads < 30) {
-      const more = await this.readFromRadio();
-      if (!more) break;
-      reads++;
+    if (this.draining) {
+      this.drainAgain = true;
+      return;
+    }
+    this.draining = true;
+    try {
+      do {
+        this.drainAgain = false;
+        let reads = 0;
+        while (reads < 30) {
+          const more = await this.readFromRadio();
+          if (!more) break;
+          reads++;
+        }
+      } while (this.drainAgain && this.isConnected);
+    } finally {
+      this.draining = false;
     }
   }
 
@@ -504,8 +686,12 @@ export class RealBleManager {
 
   private startHeartbeat(): void {
     this.stopHeartbeat();
-    // Write a heartbeat every 60s so the firmware's phone_timeout_secs
-    // (default ~15 minutes) doesn't drop the BLE link when the app is idle.
+    // Write a heartbeat every 60s (Meshtastic clients do; the firmware answers
+    // with a queue-status frame). Not what keeps the link up: on the nRF52
+    // T-Echo, firmware's "lost phone" check is Bluefruit.connected() on the
+    // physical link (NRF52Bluetooth.cpp checkIsConnected), with no idle timer.
+    // That matters because this interval doesn't run while iOS has us
+    // suspended in the background; it just catches up on the next wake.
     this.heartbeatTimer = setInterval(async () => {
       if (!this.device || !this.isConnected) return;
       try {
