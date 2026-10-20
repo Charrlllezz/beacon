@@ -22,7 +22,7 @@ import type { FromRadio } from '../../../types/mesh';
 import { PortNum } from '../../../types/mesh';
 import { SimMesh } from './SimMesh';
 import { setSimMesh } from './TcpBlePlx';
-import { lenField, concat, fixed32Field, varField } from './wire';
+import { lenField, concat, fixed32Field, varField, getField, varintOf } from './wire';
 import { RealBleManager } from '../RealBleManager';
 import { routeFromRadio } from '../PacketRouter';
 import {
@@ -38,6 +38,7 @@ import {
 import { FLEET_FIRMWARE } from '../../../utils/firmware';
 import { useDeviceStore } from '../../../store/useDeviceStore';
 import { useMessagesStore } from '../../../store/useMessagesStore';
+import { useCrewStore } from '../../../store/useCrewStore';
 
 const BROADCAST = 0xffffffff;
 const ports = (process.env.SIM_PORTS ?? '4403,4404,4405').split(',').map(Number);
@@ -179,6 +180,28 @@ describe(`RNDVU against meshtasticd ${FLEET_FIRMWARE} (sim)`, () => {
     const mark = await rebootingStep('a', () => mgr.setOwner('Ashley', 'ASH'));
     const self = since(mark).find(p => p.nodeInfo?.num === mesh.nodeNum('a'))?.nodeInfo;
     expect(self?.user?.longName).toBe('Ashley');
+  });
+
+  test('after pairing, each radio has battery broadcasts on and sends one to the crew', async () => {
+    // Saved in the radio's config (read back from its config drain)...
+    for (const id of ['a', 'b', 'c']) {
+      const telemetry = mesh.node(id).log
+        .map(e => getField(e.raw, 9)?.value)          // FromRadio.moduleConfig
+        .map(mc => mc && getField(mc, 6)?.value)       // ModuleConfig.telemetry
+        .filter((t): t is Uint8Array => !!t)
+        .at(-1);
+      expect(telemetry, `telemetry config on ${id}`).toBeDefined();
+      expect(varintOf(getField(telemetry!, 14)), `device_telemetry_enabled on ${id}`).toBe(1);
+    }
+    // ...and on the air: the firmware sends its first one soon after boot,
+    // then every 30 min. c's reaches the app on a over two hops.
+    const c = mesh.nodeNum('c');
+    await mesh.waitFor(
+      () => mesh.air.some(p => p.from === c && p.portnum === PortNum.TELEMETRY_APP) &&
+        useCrewStore.getState().crewMembers[c]?.batteryLevel !== undefined,
+      150_000,
+      "c's battery in the app",
+    );
   });
 
   test('a text from the app reaches b directly and c over two hops', async () => {

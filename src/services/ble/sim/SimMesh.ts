@@ -59,7 +59,7 @@ class SimNode {
   up = false;
   myNodeNum: number | null = null;
   /** Every non-relay FromRadio this node sent, decoded, for assertions. */
-  log: Array<{ at: number; msg: FromRadio }> = [];
+  log: Array<{ at: number; msg: FromRadio; raw: Uint8Array }> = [];
   phone: PhoneLink | null = null;
   /** Config id of the attached app's latest wantConfig since (re)connect. */
   phoneConfigId: number | null = null;
@@ -201,7 +201,7 @@ export class SimMesh {
       this.relay(node, packetField.value, msg);
     } else {
       if (msg.myInfo) node.myNodeNum = msg.myInfo.myNodeNum;
-      node.log.push({ at: Date.now(), msg });
+      node.log.push({ at: Date.now(), msg, raw: bytes });
       // Hand to the app only after it asked for config on this connection, and
       // never the harness's own config-complete marker.
       const forPhone = node.phone && node.phoneConfigId !== null &&
