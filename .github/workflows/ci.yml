@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+
+  firmware-sim:
+    # The app's BLE/codec/router code against real meshtasticd (fleet version).
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Start simulated radios
+        run: |
+          docker compose -f docker-compose.sim.yml up -d
+          for p in 4403 4404 4405; do
+            for i in $(seq 1 60); do nc -z 127.0.0.1 $p && break; sleep 1; done
+          done
+      - run: npm run test:sim
+      - name: Radio logs
+        if: always()
+        run: docker compose -f docker-compose.sim.yml logs --no-color --tail 300
