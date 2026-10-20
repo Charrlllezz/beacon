@@ -1,16 +1,18 @@
-import festivalData from '../../config/festivals/coachella-w2-2026.json';
 import type { FestivalConfig, Stage, ScheduleSlot, POI } from '../../types/festival';
 import { haversineDistance } from '../../utils/coordinates';
+import { BUNDLED_FESTIVALS, findFestival } from './festivals';
+import { useFestivalStore } from '../../store/useFestivalStore';
 
+// Reads whichever festival is active (useFestivalStore: auto by date and
+// location, or the Device-sheet override). Callers read it during render;
+// App.tsx keys the tab navigator on the active id so screens remount on a switch.
 class FestivalConfigService {
-  private config: FestivalConfig = festivalData as FestivalConfig;
+  private get config(): FestivalConfig {
+    return findFestival(useFestivalStore.getState().activeId) ?? BUNDLED_FESTIVALS[0];
+  }
 
   getConfig(): FestivalConfig {
     return this.config;
-  }
-
-  loadConfig(data: FestivalConfig): void {
-    this.config = data;
   }
 
   getStage(stageId: string): Stage | undefined {
