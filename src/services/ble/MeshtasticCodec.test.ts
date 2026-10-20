@@ -14,8 +14,10 @@ import {
   encodeFromRadioRebooted,
   encodeFromRadioPacket,
   RNDVU_CHANNEL_PSK,
+  MESSAGE_HOP_LIMIT,
 } from './MeshtasticCodec';
 import { PortNum } from '../../types/mesh';
+import { getField, varintOf } from './sim/wire';
 
 // Helper: find a field tag byte in a protobuf wire payload. Tag byte for
 // field N with wire type W is (N<<3)|W.
@@ -60,6 +62,16 @@ describe('encodeToRadio', () => {
     const bytes = encodeToRadio(0xdeadbeef, 'hello', 0x1234, 0);
     // want_ack field 10 varint with value 1 → [80, 01]
     expect(containsSequence(bytes, [tag(10, WIRE_VARINT), 1])).toBe(true);
+  });
+
+  test('sets hop_limit explicitly, broadcast and unicast', () => {
+    // Firmware only defaults hop_limit for want_ack packets, so without it a
+    // crew broadcast went out zero-hop (caught by the firmware sim).
+    for (const to of [0xffffffff, 0xdeadbeef]) {
+      const packet = getField(encodeToRadio(to, 'hello', 0x1234, 0), 1)!.value;
+      expect(varintOf(getField(packet, 9))).toBe(MESSAGE_HOP_LIMIT);
+    }
+    expect(MESSAGE_HOP_LIMIT).toBe(3);
   });
 });
 
