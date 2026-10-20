@@ -78,3 +78,14 @@ describe('isSharingLocation', () => {
     expect(compareFirmware([2, 8, 0], [2, 7, 26])).toBeGreaterThan(0);
   });
 });
+
+describe('fleet firmware pin', () => {
+  test('match, drift, and the 2.8 alpha', async () => {
+    const { checkFirmware, FLEET_FIRMWARE } = await import('../../utils/firmware');
+    expect(checkFirmware(`${FLEET_FIRMWARE}.54e0d8d`)).toBe('match');
+    expect(checkFirmware('2.7.23.b246bcd')).toBe('different');
+    expect(checkFirmware('2.5.17')).toBe('different');
+    expect(checkFirmware('2.8.1.8e6a88d')).toBe('unsupported');
+    expect(checkFirmware(null)).toBe('unknown');
+  });
+});

@@ -13,6 +13,22 @@ export function compareFirmware(a: FirmwareTriple, b: FirmwareTriple): number {
   return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
 }
 
+// The one firmware version the fleet runs and RNDVU is tested against. Flash
+// every radio to this; bump it (and retest) deliberately, never by drift.
+// 2.7.26 = latest stable as of Oct 2026. 2.8 is alpha and changes defaults
+// (position + telemetry opt-in migrations), so it's flagged as unsupported.
+export const FLEET_FIRMWARE = '2.7.26';
+const UNSUPPORTED_FROM: FirmwareTriple = [2, 8, 0];
+
+export type FirmwareCheck = 'unknown' | 'match' | 'different' | 'unsupported';
+
+export function checkFirmware(version: string | null | undefined): FirmwareCheck {
+  const v = parseFirmwareVersion(version);
+  if (!v) return 'unknown';
+  if (compareFirmware(v, UNSUPPORTED_FROM) >= 0) return 'unsupported';
+  return compareFirmware(v, parseFirmwareVersion(FLEET_FIRMWARE)!) === 0 ? 'match' : 'different';
+}
+
 // From 2.7.24, a channel with no module_settings broadcasts no position
 // ("fail closed", firmware #10513). Older firmware defaulted a PRIMARY channel
 // to exact position.

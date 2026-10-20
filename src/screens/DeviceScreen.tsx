@@ -10,7 +10,7 @@ import { useCrewStore } from '../store/useCrewStore';
 import { bleService } from '../services/ble/BleManager';
 import { regionName, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK } from '../services/ble/MeshtasticCodec';
 import { timeAgo } from '../utils/time';
-import { isSharingLocation } from '../utils/firmware';
+import { isSharingLocation, checkFirmware, FLEET_FIRMWARE } from '../utils/firmware';
 import { useFestivalStore } from '../store/useFestivalStore';
 import { useOfflineMapStore, type OfflineMapStatus } from '../store/useOfflineMapStore';
 import { festivalConfig } from '../services/festival/FestivalConfig';
@@ -221,6 +221,8 @@ export default function DeviceScreen() {
   // that predates the precision fix. Re-provision rewrites the channel.
   const sharing = isSharingLocation(positionPrecision, firmwareVersion);
   const sharingOff = sharing === false;
+  // Fleet firmware pin: amber when this radio drifted, red on 2.8 alpha.
+  const fwCheck = checkFirmware(firmwareVersion);
 
   return (
     <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
@@ -338,7 +340,18 @@ export default function DeviceScreen() {
             <View style={styles.kv}><Text style={styles.k}>Channel key</Text><Text style={styles.vMono}>{keyFingerprint ?? '—'}</Text></View>
             <View style={styles.kv}><Text style={styles.k}>Channel index</Text><Text style={styles.vMono}>{channelIndex ?? '—'}</Text></View>
             <View style={styles.kv}><Text style={styles.k}>Node ID</Text><Text style={styles.vMono}>{nodeIdHex}</Text></View>
-            <View style={styles.kv}><Text style={styles.k}>Firmware</Text><Text style={styles.vMono}>{firmwareVersion ?? '—'}</Text></View>
+            <View style={styles.kv}>
+              <Text style={styles.k}>Firmware</Text>
+              <Text style={[
+                styles.vMono,
+                fwCheck === 'different' && { color: Colors.warning },
+                fwCheck === 'unsupported' && { color: Colors.error },
+              ]}>
+                {firmwareVersion ?? '—'}
+                {fwCheck === 'different' ? ` (fleet: ${FLEET_FIRMWARE})` : ''}
+                {fwCheck === 'unsupported' ? ' — not supported yet' : ''}
+              </Text>
+            </View>
             <View style={styles.kv}><Text style={styles.k}>HW model</Text><Text style={styles.vMono}>{hwModel ?? '—'}</Text></View>
             <View style={styles.kv}><Text style={styles.k}>PKC</Text><Text style={styles.vMono}>{hasPKC == null ? '—' : hasPKC ? 'yes' : 'no'}</Text></View>
           </View>
