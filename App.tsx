@@ -17,6 +17,7 @@ import { useDeviceStore, waitForMyNode } from './src/store/useDeviceStore';
 import { useCrewStore } from './src/store/useCrewStore';
 import { useTagStore } from './src/store/useTagStore';
 import { useScheduleStore } from './src/store/useScheduleStore';
+import { useFestivalStore } from './src/store/useFestivalStore';
 import { bleService } from './src/services/ble/BleManager';
 import { RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK } from './src/services/ble/MeshtasticCodec';
 import { routeFromRadio, onMeshMessage } from './src/services/ble/PacketRouter';
@@ -51,6 +52,10 @@ export default function App() {
   const loadCrewMembers = useCrewStore(s => s.loadCrewMembers);
   const loadTags = useTagStore(s => s.loadTags);
   const loadMyGoingPicks = useScheduleStore(s => s.loadMyGoingPicks);
+  // Screens read the festival config during render; keying the tabs on the
+  // active id remounts them when it changes (rare: first GPS fix near a
+  // different venue, a date rollover, or a manual pick in the Device sheet).
+  const activeFestivalId = useFestivalStore(s => s.activeId);
   const unsubRef = useRef<{ packet?: () => void; status?: () => void; notify?: () => void }>({});
   const gpsSubRef = useRef<Location.LocationSubscription | null>(null);
 
@@ -89,6 +94,15 @@ export default function App() {
     loadCrewMembers();
     loadTags();
     loadMyGoingPicks();
+    useFestivalStore.getState().loadOverride();
+    // Re-pick the festival on the first phone GPS fix (location can narrow
+    // the pick to the venue you're at). One-shot: later moves don't flip it.
+    const unsubFirstFix = useCrewStore.subscribe((state) => {
+      if (state.myLocation && state.myLocationIsPhone) {
+        unsubFirstFix();
+        useFestivalStore.getState().refresh(new Date(), state.myLocation);
+      }
+    });
     // Phone GPS is foreground-only (battery); a background relaunch skips it
     // and the 'active' transition below starts it.
     if (startedActive) startPhoneGps();
@@ -98,6 +112,7 @@ export default function App() {
       unsubRef.current.packet?.();
       unsubRef.current.status?.();
       unsubRef.current.notify?.();
+      unsubFirstFix();
       stopPhoneGps();
     };
   }, []);
@@ -168,6 +183,8 @@ export default function App() {
         setPersistImmediately(false);
         bleService.setAppActive(true);
         startPhoneGps();
+        // Dates move on while the app sits in a pocket for days.
+        useFestivalStore.getState().refresh();
       }
     });
     return () => sub.remove();
@@ -310,7 +327,7 @@ export default function App() {
             <OnboardingScreen onComplete={() => setOnboardingComplete(true)} />
           ) : (
             <NavigationContainer theme={RNDVUNavTheme}>
-              <TabNavigator />
+              <TabNavigator key={activeFestivalId} />
             </NavigationContainer>
           )}
           {/* Device/Connection troubleshooting sheet — opened from the tappable

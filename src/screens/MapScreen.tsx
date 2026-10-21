@@ -2,7 +2,7 @@ import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react'
 import { View, StyleSheet, Text, TouchableOpacity, Pressable, Modal, TextInput, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import MapView, { Marker, UrlTile, PROVIDER_DEFAULT, Region } from 'react-native-maps';
+import MapView, { Marker, UrlTile, PROVIDER_DEFAULT } from 'react-native-maps';
 import { prefetchVenueTiles, isTilesPrefetched, getTilePath } from '../services/map/TilePrefetch';
 import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
 import { useCrewStore } from '../store/useCrewStore';
@@ -43,16 +43,10 @@ export const CREW_COLORS = [
   '#ff9800', '#9c27b0', '#ffeb3b', '#ff5252',
 ] as const;
 
-const config = festivalConfig.getConfig();
-
-const INITIAL_REGION: Region = {
-  latitude: config.venue.center.lat,
-  longitude: config.venue.center.lng,
-  latitudeDelta: 0.006,
-  longitudeDelta: 0.006,
-};
-
 export default function MapScreen() {
+  // Active festival (App.tsx remounts the tabs when it changes).
+  const config = festivalConfig.getConfig();
+  const tileBounds = config.venue.tileBounds ?? config.venue.bounds;
   const mapRef = useRef<MapView>(null);
   const crewMembers = useCrewStore(s => s.crewMembers);
   const myLocation = useCrewStore(s => s.myLocation);
@@ -76,10 +70,10 @@ export default function MapScreen() {
   // entirely. Warm the cache in the background regardless.
   useEffect(() => {
     setTilesReady(true);
-    if (!isTilesPrefetched()) {
-      prefetchVenueTiles().catch((e) => console.warn('Tile prefetch failed (non-fatal):', e));
+    if (!isTilesPrefetched(tileBounds)) {
+      prefetchVenueTiles(tileBounds).catch((e) => console.warn('Tile prefetch failed (non-fatal):', e));
     }
-  }, []);
+  }, [config.festival.id]);
 
   // Use satellite view when near venue, standard otherwise
   const isNearVenue = myLocation

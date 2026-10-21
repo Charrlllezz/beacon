@@ -24,20 +24,25 @@ export default function QuickActions({ onSendHeading, onSendRally, onSendSOS, on
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionLabel}>Heading to a stage</Text>
-      <Text style={styles.sectionHint}>Tap to tell your crew where you're going</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-        {stages.map(stage => (
-          <TouchableOpacity
-            key={stage.id}
-            style={[styles.chip, { borderColor: stage.color + '66' }]}
-            onPress={() => { hapticLight(); onSendHeading(stage.id); }}
-          >
-            <Text style={styles.chipEmoji}>{stage.emoji ?? '⭐'}</Text>
-            <Text style={[styles.chipText, { color: stage.color }]}>{stage.shortName}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* Festivals without stage data yet (e.g. a new venue) skip this row. */}
+      {stages.length > 0 && (
+        <>
+          <Text style={styles.sectionLabel}>Heading to a stage</Text>
+          <Text style={styles.sectionHint}>Tap to tell your crew where you're going</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+            {stages.map(stage => (
+              <TouchableOpacity
+                key={stage.id}
+                style={[styles.chip, { borderColor: stage.color + '66' }]}
+                onPress={() => { hapticLight(); onSendHeading(stage.id); }}
+              >
+                <Text style={styles.chipEmoji}>{stage.emoji ?? '⭐'}</Text>
+                <Text style={[styles.chipText, { color: stage.color }]}>{stage.shortName}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </>
+      )}
 
       <View style={styles.actionRow}>
         <TouchableOpacity style={[styles.actionButton, styles.rallyButton]} onPress={onSendRally}>

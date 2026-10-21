@@ -11,10 +11,15 @@
     "timezone": "America/Los_Angeles"
   },
   "venue": {
+    "name": "Empire Polo Club, Indio",
     "center": { "lat": 33.6803, "lng": -116.2378 },
     "bounds": {
       "ne": { "lat": 33.6850, "lng": -116.2310 },
       "sw": { "lat": 33.6750, "lng": -116.2450 }
+    },
+    "tileBounds": {
+      "ne": { "lat": 33.705, "lng": -116.205 },
+      "sw": { "lat": 33.655, "lng": -116.265 }
     }
   },
   "stages": [

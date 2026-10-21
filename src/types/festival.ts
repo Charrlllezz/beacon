@@ -44,6 +44,11 @@ export interface TaggedPOI {
   confirmCount: number;
 }
 
+export interface GeoBounds {
+  ne: GpsPoint;
+  sw: GpsPoint;
+}
+
 export interface FestivalConfig {
   $schema: string;
   festival: {
@@ -54,11 +59,13 @@ export interface FestivalConfig {
     timezone: string;
   };
   venue: {
+    name?: string;
     center: GpsPoint;
-    bounds: {
-      ne: GpsPoint;
-      sw: GpsPoint;
-    };
+    // The grounds themselves.
+    bounds: GeoBounds;
+    // Offline satellite area: usually wider than the grounds (parking,
+    // camping, shuttle stops, transit). Falls back to `bounds`.
+    tileBounds?: GeoBounds;
   };
   stages: Stage[];
   pois: POI[];
