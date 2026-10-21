@@ -32,6 +32,9 @@ interface DeviceState {
   lastPacketAt: number | null;
   region: number | null;               // LoRa RegionCode from the device config
   channelKeyFingerprint: string | null; // short hash of the channel PSK
+  // Primary channel's module_settings.position_precision: undefined until the
+  // config drain reports it, null if the channel has no module_settings.
+  positionPrecision: number | null | undefined;
   // Whether the Device/Connection troubleshooting sheet is open. Opened from the
   // tappable ConnectionBar and the header gear; rendered once at the app root.
   deviceSheetOpen: boolean;
@@ -51,6 +54,7 @@ interface DeviceState {
   setLastPacketAt: (ts: number) => void;
   setRegion: (region: number | null) => void;
   setChannelKeyFingerprint: (fp: string | null) => void;
+  setPositionPrecision: (p: number | null) => void;
   setDeviceSheetOpen: (open: boolean) => void;
   setReleased: (released: boolean) => void;
   disconnect: () => void;
@@ -73,6 +77,7 @@ export const useDeviceStore = create<DeviceState>((set) => ({
   lastPacketAt: null,
   region: null,
   channelKeyFingerprint: null,
+  positionPrecision: undefined,
   deviceSheetOpen: false,
   released: false,
 
@@ -99,6 +104,7 @@ export const useDeviceStore = create<DeviceState>((set) => ({
   setLastPacketAt: (lastPacketAt) => set({ lastPacketAt }),
   setRegion: (region) => set({ region }),
   setChannelKeyFingerprint: (channelKeyFingerprint) => set({ channelKeyFingerprint }),
+  setPositionPrecision: (positionPrecision) => set({ positionPrecision }),
   setDeviceSheetOpen: (deviceSheetOpen) => set({ deviceSheetOpen }),
   setReleased: (released) => set({ released }),
   disconnect: () =>

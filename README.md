@@ -2,7 +2,7 @@
 
 Festival crew app for when there is no cell service. Everyone in the crew carries a cheap [Meshtastic](https://meshtastic.org) LoRa radio (a LilyGO T-Echo) paired to their phone over Bluetooth; the radios form a mesh with no towers and no Wi-Fi. RNDVU sits on top of that mesh and answers the questions crews actually have once they get separated: where is everyone, where and when are we meeting, who needs help, and who's going to which set. Started as "Beacon" (hence the repo name); rebranded RNDVU in April 2026.
 
-**Status: working prototype, built for Coachella 2026 Weekend 2.** Real Bluetooth against real radios, a TestFlight build, and 108 passing tests. The git history records a TestFlight build and hardware debugging with testers; it does not record festival-day use, so this README doesn't claim it. See [Status](#status).
+**Status: working prototype, built for Coachella 2026 Weekend 2.** Real Bluetooth against real radios, a TestFlight build, and 117 passing tests. The git history records a TestFlight build and hardware debugging with testers; it does not record festival-day use, so this README doesn't claim it. See [Status](#status).
 
 ```bash
 npm install                # lockfile + .npmrc (legacy-peer-deps)
@@ -41,7 +41,7 @@ MockBleManager ──► MockFirmware (virtual radio; emits real protobuf bytes,
 
 ## The interesting parts
 
-**The app provisions the radio.** Nobody in the crew should have to open the Meshtastic app or scan a QR code. On first connect RNDVU drains the radio's config, waits for its node number, then writes admin messages: LoRa region in its own committed transaction *first* (an interrupted provision once left region UNSET, which is a radio that silently never transmits), then channel 0 = `RNDVU` with a 32-byte PSK, disables channels 1–7, commits, reboots. Factory reset sets a flag so the next reconnect re-runs the whole sequence. Every config write sends the *complete* message because proto3 defaults clobber unset fields; a partial `LoRaConfig` write once turned `tx_enabled` off.
+**The app provisions the radio.** Nobody in the crew should have to open the Meshtastic app or scan a QR code. On first connect RNDVU drains the radio's config, waits for its node number, then writes admin messages: LoRa region in its own committed transaction *first* (an interrupted provision once left region UNSET, which is a radio that silently never transmits), then channel 0 = `RNDVU` with a 32-byte PSK and an explicit position precision (firmware 2.7.24+ treats a channel without one as "share no position", so crew pins would silently vanish), disables channels 1–7, commits, reboots. The Device sheet flags a radio whose channel isn't sharing location. Factory reset sets a flag so the next reconnect re-runs the whole sequence. Every config write sends the *complete* message because proto3 defaults clobber unset fields; a partial `LoRaConfig` write once turned `tx_enabled` off.
 
 **Structured messages ride on plain text.** Every type in the table goes out on Meshtastic's `TEXT_MESSAGE_APP` port as a short `MF:`-prefixed string, so stock firmware forwards it and a crew member on the official app just sees terse text. Malformed input falls back to a text bubble; 25 round-trip and malformed-input tests cover it.
 
@@ -69,7 +69,7 @@ MockBleManager ──► MockFirmware (virtual radio; emits real protobuf bytes,
 
 ## Status
 
-Verified in this tree: `tsc` clean, `vitest` 108/108. `USE_MOCK = false`, so the checked-in build talks to hardware.
+Verified in this tree: `tsc` clean, `vitest` 117/117. `USE_MOCK = false`, so the checked-in build talks to hardware.
 
 Known gaps, all noted in the code:
 

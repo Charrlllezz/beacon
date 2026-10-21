@@ -84,6 +84,9 @@ export interface MockFirmwareOptions {
   // Starts with RNDVU channel pre-provisioned. Set false to simulate a fresh
   // factory-reset device that needs onboarding to write setChannel.
   preProvisioned?: boolean;
+  // Pre-provisioned channel's position precision. Pass null to simulate a
+  // channel with no module_settings (provisioned by an older RNDVU build).
+  positionPrecision?: number | null;
 }
 
 type Listener = () => void;
@@ -99,7 +102,9 @@ type Listener = () => void;
 export class MockFirmware {
   readonly myNodeNum: number;
   owner: { id: string; longName: string; shortName: string };
-  primaryChannel: { index: number; name: string; role: number };
+  // positionPrecision undefined = channel has no module_settings (what RNDVU
+  // builds before the 2.7.24 fix wrote); firmware ≥2.7.24 then sends no position.
+  primaryChannel: { index: number; name: string; role: number; positionPrecision?: number };
   loraConfig: { region: number; txEnabled: boolean; usePreset: boolean };
   firmwareVersion: string;
   hwModel: number;
@@ -123,7 +128,7 @@ export class MockFirmware {
     // Pre-provisioned by default so "connect to existing device" works; tests
     // can pass preProvisioned=false to simulate a fresh factory-reset T-Echo.
     if (opts.preProvisioned !== false) {
-      this.primaryChannel = { index: 0, name: RNDVU_CHANNEL_NAME, role: 1 };
+      this.primaryChannel = { index: 0, name: RNDVU_CHANNEL_NAME, role: 1, positionPrecision: opts.positionPrecision === null ? undefined : (opts.positionPrecision ?? 32) };
       this.loraConfig = { region: 1, txEnabled: true, usePreset: true };
     } else {
       this.primaryChannel = { index: 0, name: '', role: 0 }; // DISABLED
@@ -256,12 +261,21 @@ export class MockFirmware {
       const sf = parseFields(c.get(2)![0]);
       if (sf.has(3)) name = readString(sf.get(3)![0]);
     }
+    let positionPrecision: number | undefined;
+    if (c.has(2)) {
+      const sf = parseFields(c.get(2)![0]);
+      // module_settings (7) { position_precision (1) }
+      if (sf.has(7)) {
+        const ms = parseFields(sf.get(7)![0]);
+        positionPrecision = ms.has(1) ? varintOf(ms.get(1)![0]) : 0;
+      }
+    }
     const role = c.has(3) ? varintOf(c.get(3)![0]) : 0;
     if (role === 1 /* PRIMARY */) {
-      this.primaryChannel = { index, name, role };
+      this.primaryChannel = { index, name, role, positionPrecision };
     }
     // Echo the channel back so the app's PacketRouter updates channelName.
-    this.enqueue(encodeFromRadioChannel({ index, name, role }));
+    this.enqueue(encodeFromRadioChannel({ index, name, role, positionPrecision }));
   }
 
   private handleSetConfig(configBytes: Uint8Array) {
@@ -345,6 +359,7 @@ export class MockFirmware {
         index: this.primaryChannel.index,
         name: this.primaryChannel.name,
         role: this.primaryChannel.role,
+        positionPrecision: this.primaryChannel.positionPrecision,
       }));
     }
     this.enqueue(encodeFromRadioMetadata({
