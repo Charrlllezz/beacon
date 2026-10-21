@@ -103,6 +103,18 @@ with their own name.
   faster.
 - **"Unknown SoftDevice".** The radio's bootloader is unusual. Don't force it.
   Note the label and check the Meshtastic nRF52 bootloader docs.
+- **"NOT ERASED (old settings still on it)".** The erase file was copied but the
+  radio kept its old name, region and channel. This happened on the very first
+  real run, twice in a row. Wipe it over USB instead:
+  `python -m meshtastic --port COMx --factory-reset-device`, then **restart the
+  radio** (hold power, or tap reset once). The reset only applies on restart,
+  and until then the radio can stop answering on USB. It's blank when the screen
+  says "Welcome to Meshtastic". Then run the script again with
+  `--firmware-only`, or key it as below.
+- **The script stops at "Erasing" after 90 s.** The double-tap came too early or
+  too slow, and the radio is sitting in the erase program (Windows shows a serial
+  port but no drive). Run the script again and double-tap **fast**, about 5 s
+  after "Erasing".
 - **"VERIFY FAILED".** The radio flashed but didn't report 2.7.26. Flash it
   again. If it fails twice, set it aside.
 - **The bootloader is older than 0.6.** It works, but Meshtastic recommends

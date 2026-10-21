@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import flash_fleet as ff
 
@@ -39,6 +40,25 @@ class BootInfoTests(unittest.TestCase):
     def test_not_a_t_echo(self):
         info = ff.parse_info_uf2("Model: RAK4631\nBoard-ID: nRF52840-WisBlock\n", Path("E:/"))
         self.assertFalse(info.is_t_echo)
+
+    def test_vanishing_drive_counts_as_gone(self):
+        # Windows raises WinError 433 when the drive disappears mid-check;
+        # that crashed the first real flash right after a good copy.
+        def vanished(self):
+            raise OSError(433, "A device which does not exist was specified")
+        with mock.patch.object(Path, "is_file", vanished):
+            self.assertFalse(ff.drive_present(Path("D:/")))
+        with tempfile.TemporaryDirectory() as d:
+            self.assertFalse(ff.drive_present(Path(d)))
+            (Path(d) / "INFO_UF2.TXT").write_text(INFO_6)
+            self.assertTrue(ff.drive_present(Path(d)))
+
+
+class EraseCheckTests(unittest.TestCase):
+    def test_region_set_means_not_erased(self):
+        # The first real run left owner, region and channel in place.
+        self.assertTrue(ff.RadioInfo("!dbfc6a47", "2.7.26", region=0).blank)
+        self.assertFalse(ff.RadioInfo("!dbfc6a47", "2.7.26", region=1).blank)
 
 
 class InventoryTests(unittest.TestCase):
