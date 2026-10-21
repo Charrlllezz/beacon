@@ -65,6 +65,7 @@ export enum PortNum {
   ROUTING_APP = 5,
   ADMIN_APP = 6,
   TELEMETRY_APP = 67,
+  SIMULATOR_APP = 69, // firmware-sim only: a --sim node's over-the-air packet
   ATAK_FORWARDER = 140,
 }
 

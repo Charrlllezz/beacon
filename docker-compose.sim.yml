@@ -1,0 +1,27 @@
+# Three simulated radios running the pinned fleet firmware (utils/firmware.ts
+# FLEET_FIRMWARE) for `npm run test:sim`. --sim swaps the LoRa chip for the
+# API, so the test harness carries packets between nodes. See docs/firmware-sim.md.
+#
+#   docker compose -f docker-compose.sim.yml up -d
+#   npm run test:sim
+#   docker compose -f docker-compose.sim.yml down -v   # -v wipes the radios' saved config
+
+x-node: &node
+  image: meshtastic/meshtasticd:2.7.26
+  entrypoint: ["/usr/bin/meshtasticd"]
+  # A reboot (end of pairing) exits the process; restart it like a radio would.
+  restart: unless-stopped
+
+services:
+  node-a:
+    <<: *node
+    command: ["-s", "-d", "/var/lib/meshtasticd", "-h", "16", "-p", "4403"]
+    ports: ["4403:4403"]
+  node-b:
+    <<: *node
+    command: ["-s", "-d", "/var/lib/meshtasticd", "-h", "17", "-p", "4403"]
+    ports: ["4404:4403"]
+  node-c:
+    <<: *node
+    command: ["-s", "-d", "/var/lib/meshtasticd", "-h", "18", "-p", "4403"]
+    ports: ["4405:4403"]
