@@ -55,6 +55,13 @@ class BootInfoTests(unittest.TestCase):
 
 
 class EraseCheckTests(unittest.TestCase):
+    def test_erase_port_is_not_bootloader_or_meshtastic(self):
+        self.assertTrue(ff.is_erase_port(0x239A, 0x8029))
+        self.assertFalse(ff.is_erase_port(0x239A, 0x0029))  # bootloader
+        self.assertFalse(ff.is_erase_port(0x239A, 0x4405))  # Meshtastic
+        self.assertFalse(ff.is_erase_port(None, None))      # COM1 etc.
+        self.assertFalse(ff.is_erase_port(0x1915, 0x8029))  # someone else's board
+
     def test_region_set_means_not_erased(self):
         # The first real run left owner, region and channel in place.
         self.assertTrue(ff.RadioInfo("!dbfc6a47", "2.7.26", region=0).blank)
