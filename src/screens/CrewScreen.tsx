@@ -21,6 +21,8 @@ import { buildColorMessage } from '../services/mesh/MessageService';
 import { CREW_COLORS } from './MapScreen';
 import type { CrewMember } from '../types/crew';
 import type { Stage } from '../types/festival';
+import { useEndTripStore, debriefHandled, skipDebrief } from '../components/debrief/EndTripSheet';
+import { shouldOfferDebrief } from '../utils/debrief';
 
 const BATTERY_CRITICAL = 15;
 
@@ -142,6 +144,16 @@ export default function CrewScreen() {
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selfMember = myNodeNum ? crewMembers[myNodeNum] : null;
+
+  // From the morning after the festival: offer the end-trip debrief until it's
+  // done or skipped. Re-checked when the sheet closes.
+  const [offerDebrief, setOfferDebrief] = useState(false);
+  const endTripOpen = useEndTripStore(s => s.open);
+  useEffect(() => {
+    const c = festivalConfig.getConfig();
+    if (!shouldOfferDebrief(c, Date.now())) { setOfferDebrief(false); return; }
+    debriefHandled(c.festival.id).then(done => setOfferDebrief(!done));
+  }, [endTripOpen]);
 
   const handleFindOnMap = useCallback((nodeId: number) => {
     setFocusNode(nodeId);
@@ -428,6 +440,26 @@ export default function CrewScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.primary} />
         }
       >
+        {offerDebrief && (
+          <View style={[styles.card, styles.debriefCard]}>
+            <View style={styles.info}>
+              <Text style={styles.name}>How did {festivalConfig.getConfig().festival.shortName} go?</Text>
+              <Text style={styles.metaText}>Two minutes. It decides what gets fixed next.</Text>
+            </View>
+            <View style={{ gap: 6 }}>
+              <TouchableOpacity style={styles.debriefBtn} onPress={() => useEndTripStore.getState().setOpen(true)}>
+                <Text style={styles.colorButtonText}>End trip</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { skipDebrief(festivalConfig.getConfig().festival.id); setOfferDebrief(false); }}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Text style={styles.debriefSkip}>Not now</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* You card */}
         {selfMember && (
           <>
@@ -666,6 +698,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   colorButtonText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700' },
+  debriefCard: { borderColor: Colors.primary + '66', backgroundColor: Colors.primary + '11' },
+  debriefBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    alignItems: 'center',
+  },
+  debriefSkip: { color: Colors.textSecondary, fontSize: FontSize.xs, textAlign: 'center' },
   modalOverlay: {
     flex: 1,
     backgroundColor: Colors.overlay,

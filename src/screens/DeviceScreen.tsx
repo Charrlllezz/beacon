@@ -15,6 +15,7 @@ import { isSharingLocation, checkFirmware, FLEET_FIRMWARE } from '../utils/firmw
 import { useFestivalStore } from '../store/useFestivalStore';
 import { useOfflineMapStore, type OfflineMapStatus } from '../store/useOfflineMapStore';
 import { festivalConfig } from '../services/festival/FestivalConfig';
+import { useEndTripStore } from '../components/debrief/EndTripSheet';
 
 const OFFLINE_MAP_COLOR: Record<OfflineMapStatus, string> = {
   idle: Colors.textSecondary,
@@ -302,6 +303,18 @@ export default function DeviceScreen() {
               </TouchableOpacity>
             )}
           </View>
+
+          <TouchableOpacity
+            style={[styles.action, { marginTop: Spacing.sm }]}
+            onPress={() => {
+              // One sheet at a time: close this one, then open End trip.
+              close();
+              setTimeout(() => useEndTripStore.getState().setOpen(true), 400);
+            }}
+          >
+            <Text style={styles.actionTitle}>End trip</Text>
+            <Text style={styles.actionSub}>A two-minute debrief, what the app measured, and releasing your radio.</Text>
+          </TouchableOpacity>
 
           <Text style={styles.sectionTitle}>TROUBLESHOOTING</Text>
 
