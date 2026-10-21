@@ -98,6 +98,9 @@ export interface Channel {
   // Short non-reversible hash of the channel PSK. Lets two devices confirm they
   // share the same key at a glance without ever exposing the key itself.
   keyFingerprint?: string;
+  // The raw key, for Model 2 pairing to adopt a pre-keyed radio's crew. Never
+  // log it or put it in a store other than the crew store.
+  psk?: Uint8Array;
 }
 
 export interface DeviceConfig {

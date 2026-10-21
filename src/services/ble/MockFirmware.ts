@@ -87,6 +87,9 @@ export interface MockFirmwareOptions {
   // Pre-provisioned channel's position precision. Pass null to simulate a
   // channel with no module_settings (provisioned by an older RNDVU build).
   positionPrecision?: number | null;
+  // Pre-provisioned channel's key (default: the Model 1 key). Pass a crew key
+  // to simulate a shipped radio pre-keyed at the flashing station.
+  channelPsk?: Uint8Array;
 }
 
 type Listener = () => void;
@@ -107,7 +110,7 @@ export class MockFirmware {
   owner: { id: string; longName: string; shortName: string };
   // positionPrecision undefined = channel has no module_settings (what RNDVU
   // builds before the 2.7.24 fix wrote); firmware ≥2.7.24 then sends no position.
-  primaryChannel: { index: number; name: string; role: number; positionPrecision?: number };
+  primaryChannel: { index: number; name: string; role: number; positionPrecision?: number; psk?: Uint8Array };
   loraConfig: { region: number; txEnabled: boolean; usePreset: boolean };
   firmwareVersion: string;
   hwModel: number;
@@ -135,7 +138,11 @@ export class MockFirmware {
     // Pre-provisioned by default so "connect to existing device" works; tests
     // can pass preProvisioned=false to simulate a fresh factory-reset T-Echo.
     if (opts.preProvisioned !== false) {
-      this.primaryChannel = { index: 0, name: RNDVU_CHANNEL_NAME, role: 1, positionPrecision: opts.positionPrecision === null ? undefined : (opts.positionPrecision ?? 32) };
+      this.primaryChannel = {
+        index: 0, name: RNDVU_CHANNEL_NAME, role: 1,
+        positionPrecision: opts.positionPrecision === null ? undefined : (opts.positionPrecision ?? 32),
+        psk: opts.channelPsk ?? RNDVU_CHANNEL_PSK,
+      };
       this.loraConfig = { region: 1, txEnabled: true, usePreset: true };
     } else {
       this.primaryChannel = { index: 0, name: '', role: 0 }; // DISABLED
@@ -303,9 +310,11 @@ export class MockFirmware {
     const c = parseFields(channelBytes);
     const index = c.has(1) ? varintOf(c.get(1)![0]) : 0;
     let name = '';
+    let psk: Uint8Array | undefined;
     if (c.has(2)) {
       const sf = parseFields(c.get(2)![0]);
       if (sf.has(3)) name = readString(sf.get(3)![0]);
+      if (sf.has(2)) psk = sf.get(2)![0];
     }
     let positionPrecision: number | undefined;
     if (c.has(2)) {
@@ -318,10 +327,10 @@ export class MockFirmware {
     }
     const role = c.has(3) ? varintOf(c.get(3)![0]) : 0;
     if (role === 1 /* PRIMARY */) {
-      this.primaryChannel = { index, name, role, positionPrecision };
+      this.primaryChannel = { index, name, role, positionPrecision, psk };
     }
     // Echo the channel back so the app's PacketRouter updates channelName.
-    this.enqueue(encodeFromRadioChannel({ index, name, role, positionPrecision }));
+    this.enqueue(encodeFromRadioChannel({ index, name, role, positionPrecision, psk }));
   }
 
   private handleSetConfig(configBytes: Uint8Array) {
@@ -409,6 +418,7 @@ export class MockFirmware {
         name: this.primaryChannel.name,
         role: this.primaryChannel.role,
         positionPrecision: this.primaryChannel.positionPrecision,
+        psk: this.primaryChannel.psk,
       }));
     }
     this.enqueue(encodeFromRadioMetadata({
