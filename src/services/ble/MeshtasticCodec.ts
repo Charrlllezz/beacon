@@ -329,6 +329,9 @@ function float32Val(field: Uint8Array): number {
   return new DataView(buf).getFloat32(0, true);
 }
 
+/** Meshtastic's default hop limit; also what the fleet radios are flashed with. */
+export const MESSAGE_HOP_LIMIT = 3;
+
 export function encodeToRadio(to: number, text: string, myNodeNum: number, channelIndex = 0): Uint8Array {
   const textBytes = new TextEncoder().encode(text);
   const dataPayload = concat(varField(1, PortNum.TEXT_MESSAGE_APP), lenField(2, textBytes));
@@ -343,6 +346,11 @@ export function encodeToRadio(to: number, text: string, myNodeNum: number, chann
     fixed32Field(2, to),          // to: fixed32
     varField(3, channelIndex),    // channel: uint32
     lenField(4, dataPayload),     // decoded: field 4
+    // hop_limit: field 9. Must be explicit: firmware only fills in its default
+    // for packets with want_ack (Router.cpp, 2.7.26), so a broadcast sent
+    // without it goes out zero-hop and nobody relays it (found by the
+    // firmware sim, docs/firmware-sim.md).
+    varField(9, MESSAGE_HOP_LIMIT),
   ];
   if (!isBroadcast) parts.push(varField(10, 1)); // want_ack: field 10
   const meshPacket = concat(...parts);
