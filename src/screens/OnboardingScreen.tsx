@@ -10,7 +10,8 @@ import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
 import { useDeviceStore, waitForMyNode } from '../store/useDeviceStore';
 import { useCrewStore } from '../store/useCrewStore';
 import { bleService } from '../services/ble/BleManager';
-import { RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK } from '../services/ble/MeshtasticCodec';
+import { RNDVU_CHANNEL_NAME } from '../services/ble/MeshtasticCodec';
+import { CREW_CHANNEL_PSK } from '../config/channelKey';
 import { useMessagesStore } from '../store/useMessagesStore';
 import { requestNotificationPermission } from '../services/notifications/LocalNotifications';
 
@@ -104,7 +105,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
         // don't wait for it here. ConnectionBar shows 'reconnecting' briefly
         // after the user lands on the main app.
         try {
-          await bleService.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK, 1, owner);
+          await bleService.setChannel(0, RNDVU_CHANNEL_NAME, CREW_CHANNEL_PSK, 1, owner);
         } catch (e) {
           console.warn('setChannel on onboarding failed:', e);
           // Don't silently proceed with a half-provisioned radio. Flag it so the
