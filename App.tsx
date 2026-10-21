@@ -12,6 +12,7 @@ import TabNavigator from './src/navigation/TabNavigator';
 import ErrorBoundary from './src/components/common/ErrorBoundary';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import DeviceScreen from './src/screens/DeviceScreen';
+import EndTripSheet from './src/components/debrief/EndTripSheet';
 import { useMessagesStore, flushPendingPersist, setPersistImmediately } from './src/store/useMessagesStore';
 import { useDeviceStore, waitForMyNode } from './src/store/useDeviceStore';
 import { useCrewStore } from './src/store/useCrewStore';
@@ -366,6 +367,7 @@ export default function App() {
           {/* Device/Connection troubleshooting sheet — opened from the tappable
               ConnectionBar and the header gear; self-controlled via the store. */}
           <DeviceScreen />
+          <EndTripSheet />
         </ErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>
