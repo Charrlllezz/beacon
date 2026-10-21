@@ -222,3 +222,11 @@ Community tags (channel 1) were never set up. Options:
    - The key is still extractable from the app bundle by someone who has the
      build. That's acceptable for a TestFlight-only crew of 6.
 6. **A Meshtastic-app QR.** Included.
+
+## Decisions (Oct 21, 2026)
+
+7. **Switching crews keeps old messages and people.** They age out on the
+   normal 7-day timer, as built. Switching crews should almost never happen
+   (a crew normally keeps its key for the whole festival), so this isn't
+   worth extra UI or a confirm step. Revisit only if a hardware test or
+   festival shows people switching on purpose.
