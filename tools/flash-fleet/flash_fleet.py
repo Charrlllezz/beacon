@@ -146,7 +146,10 @@ def wait_for_boot_drive(timeout_s: float, prompt: str | None = None) -> BootInfo
         if drives:
             d = drives[0]
             time.sleep(1.0)  # let the volume settle
-            return parse_info_uf2((d / "INFO_UF2.TXT").read_text(errors="replace"), d)
+            try:
+                return parse_info_uf2((d / "INFO_UF2.TXT").read_text(errors="replace"), d)
+            except OSError:  # it vanished again (a stray double-tap); keep waiting
+                continue
         time.sleep(0.5)
     return None
 
@@ -158,12 +161,21 @@ def copy_uf2(src: Path, info: BootInfo) -> None:
     try:
         shutil.copyfile(src, info.drive / src.name)
     except OSError:
-        if (info.drive / "INFO_UF2.TXT").exists():
+        if drive_present(info.drive):
             raise
     # Wait for the drive to disappear (the radio is applying the file).
     deadline = time.time() + 30
-    while time.time() < deadline and (info.drive / "INFO_UF2.TXT").exists():
+    while time.time() < deadline and drive_present(info.drive):
         time.sleep(0.5)
+
+
+def drive_present(drive: Path) -> bool:
+    """Is the bootloader drive still mounted? On Windows, a drive that vanishes
+    mid-check raises (WinError 433) instead of returning False."""
+    try:
+        return (drive / "INFO_UF2.TXT").is_file()
+    except OSError:
+        return False
 
 
 # ── Firmware bundle ──────────────────────────────────────────────────────────
@@ -205,6 +217,13 @@ def ensure_bundle() -> dict[str, Path]:
 class RadioInfo:
     node_id: str
     firmware: str
+    # A wiped radio has no region (UNSET = 0). Anything else means the factory
+    # erase didn't run and the last user's settings are still on it.
+    region: int = 0
+
+    @property
+    def blank(self) -> bool:
+        return self.region == 0
 
 
 def verify_radio(timeout_s: float = 90) -> RadioInfo | None:
@@ -230,7 +249,8 @@ def verify_radio(timeout_s: float = 90) -> RadioInfo | None:
             try:
                 num = iface.myInfo.my_node_num if iface.myInfo else 0
                 fw = getattr(getattr(iface, "metadata", None), "firmware_version", "") or ""
-                return RadioInfo(node_id=f"!{num:08x}", firmware=fw)
+                region = iface.localNode.localConfig.lora.region if iface.localNode else 0
+                return RadioInfo(node_id=f"!{num:08x}", firmware=fw, region=int(region))
             finally:
                 iface.close()
         if len(ports) > 1:
@@ -460,6 +480,11 @@ def flash_one(files: dict[str, Path], erase: bool, verify: bool, order: Order | 
     label = label_for(node_id, rows)
     ok = radio is not None and radio.firmware.startswith(FLEET_FIRMWARE)
     notes = "" if ok or not verify else f"VERIFY FAILED (read '{radio.firmware if radio else 'nothing'}')"
+    if erase and radio is not None and not radio.blank:
+        # Seen on the first real run: the erase file was copied but the old
+        # owner, region and channel survived. Don't ship a radio like that.
+        ok = False
+        notes = (notes + " " if notes else "") + "NOT ERASED (old settings still on it)"
     crew = ""
     if order is not None:
         print(f"  Keying for order {order.order_id} (crew {order.crew_id}) ...")
