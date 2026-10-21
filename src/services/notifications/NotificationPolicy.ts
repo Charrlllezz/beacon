@@ -7,6 +7,16 @@ export interface LocalNotice {
   // SOS only. Maps to iOS interruptionLevel 'timeSensitive', which breaks
   // through Focus / notification summary so a locked phone actually lights up.
   timeSensitive: boolean;
+  // Notifications with the same key replace each other instead of stacking
+  // (an SOS's repeats and its "I'm OK" share one).
+  replaceKey?: string;
+}
+
+/** For an SOS alert: is it the first this phone heard of that SOS? */
+export interface SosContext {
+  key: string;       // the thread (sosThread().key)
+  isHead: boolean;   // first alert this phone has of it
+  silenced: boolean; // I've answered "I'm coming" or hidden its banner
 }
 
 /**
@@ -21,7 +31,7 @@ export interface LocalNotice {
 export function noticeForMessage(
   message: Message,
   // replyTarget: for a reply, the message it answers (if this phone has it).
-  opts: { appActive: boolean; myNodeNum: number | null; replyTarget?: Message },
+  opts: { appActive: boolean; myNodeNum: number | null; replyTarget?: Message; sos?: SosContext },
 ): LocalNotice | null {
   if (opts.appActive) return null;
   if (opts.myNodeNum !== null && message.fromNodeId === opts.myNodeNum) return null;
@@ -44,13 +54,33 @@ export function noticeForMessage(
         timeSensitive: false,
       };
     }
-    case 'sos':
+    case 'sos': {
+      const replaceKey = opts.sos ? `sos-${opts.sos.key}` : undefined;
+      // A repeat of an SOS this phone already has keeps nudging (replacing
+      // the same notification) until I answer or hide it.
+      if (opts.sos && !opts.sos.isHead) {
+        if (opts.sos.silenced) return null;
+        return { title: `SOS from ${who}`, body: `${who} still needs help. Location updated.`, timeSensitive: true, replaceKey };
+      }
       return {
         title: `SOS from ${who}`,
         body: `${who} needs help. Open RNDVU to see where they are.`,
         timeSensitive: true,
+        replaceKey,
       };
+    }
     case 'reply': {
+      // The SOS sender is OK: everyone hears it, and it replaces the alert.
+      if (message.kind === 'safe') {
+        const target = opts.replyTarget;
+        if (!target || target.type !== 'sos' || target.fromNodeId !== message.fromNodeId) return null;
+        return {
+          title: `${who} is OK`,
+          body: `${who} cancelled their SOS.`,
+          timeSensitive: false,
+          replaceKey: opts.sos ? `sos-${opts.sos.key}` : undefined,
+        };
+      }
       // Only answers to something I sent: the rest of the crew doesn't need
       // a buzz for every "on my way".
       const target = opts.replyTarget;

@@ -52,6 +52,25 @@ describe('noticeForMessage', () => {
       .toEqual({ title: 'Maya is coming', body: 'Maya saw your SOS and is on the way.', timeSensitive: true });
   });
 
+  test('SOS repeats nudge (same notification) until silenced', () => {
+    const sos: Message = { ...base, type: 'sos', lat: 1, lng: 2, replyTo: 500 };
+    expect(noticeForMessage(sos, { ...away, sos: { key: 'k', isHead: false, silenced: false } }))
+      .toEqual({ title: 'SOS from Maya', body: 'Maya still needs help. Location updated.', timeSensitive: true, replaceKey: 'sos-k' });
+    expect(noticeForMessage(sos, { ...away, sos: { key: 'k', isHead: false, silenced: true } })).toBeNull();
+    // A repeat is the first this phone heard: full alert.
+    expect(noticeForMessage(sos, { ...away, sos: { key: 'k', isHead: true, silenced: false } })?.body)
+      .toBe('Maya needs help. Open RNDVU to see where they are.');
+  });
+
+  test("I'm OK from the SOS sender tells everyone and replaces the alert", () => {
+    const theirSos: Message = { ...base, id: 's', type: 'sos', lat: 1, lng: 2, packetId: 500 };
+    const safe: Message = { ...base, type: 'reply', kind: 'safe', replyTo: 500 };
+    expect(noticeForMessage(safe, { ...away, replyTarget: theirSos, sos: { key: 'k', isHead: false, silenced: false } }))
+      .toEqual({ title: 'Maya is OK', body: 'Maya cancelled their SOS.', timeSensitive: false, replaceKey: 'sos-k' });
+    // Someone else can't cancel Maya's SOS.
+    expect(noticeForMessage({ ...safe, fromNodeId: 0x777 }, { ...away, replyTarget: theirSos })).toBeNull();
+  });
+
   test('silent while the app is in the foreground', () => {
     expect(noticeForMessage({ ...base, type: 'sos', lat: 1, lng: 2 }, { appActive: true, myNodeNum: ME })).toBeNull();
   });

@@ -13,12 +13,14 @@ const LABELS: Record<ReplyKind, string> = {
   omw: 'On my way',
   cant: "Can't make it",
   coming: "I'm coming",
+  safe: "I'm OK",
 };
 
 const COLORS: Record<ReplyKind, string> = {
   omw: Colors.success,
   cant: Colors.textSecondary,
   coming: Colors.error,
+  safe: Colors.success,
 };
 
 interface Props {
@@ -26,6 +28,9 @@ interface Props {
   isMine: boolean;
   // Answers to offer (none: only show who answered).
   options: ReplyKind[];
+  // The packet id answers point at, when it isn't this message's own (an
+  // SOS card led by a repeat answers the first alert).
+  targetPacketId?: number;
 }
 
 /**
@@ -33,22 +38,23 @@ interface Props {
  * everyone but the sender. Each tap is one small broadcast that points at the
  * card's packet id (Data.reply_id), so it shows up on every phone's card.
  */
-export default function ReplyBar({ message, isMine, options }: Props) {
+export default function ReplyBar({ message, isMine, options, targetPacketId }: Props) {
   const messages = useMessagesStore(s => s.messages);
   const myNodeNum = useDeviceStore(s => s.myNodeNum);
   const [sending, setSending] = useState<ReplyKind | null>(null);
+  const target = targetPacketId ?? message.packetId;
 
-  const responders = useMemo(() => respondersTo(messages, message.packetId), [messages, message.packetId]);
+  const responders = useMemo(() => respondersTo(messages, target), [messages, target]);
   const mine = myAnswer(responders, myNodeNum);
   const summary = responderSummary(responders);
   // Messages from before replies existed have no packet id to answer.
-  const canAnswer = !isMine && options.length > 0 && !!message.packetId;
+  const canAnswer = !isMine && options.length > 0 && !!target;
 
   async function answer(kind: ReplyKind) {
     if (sending || kind === mine) return;
     hapticLight();
     setSending(kind);
-    const result = await sendCrewMessage(buildReplyMessage(kind), { replyTo: message.packetId });
+    const result = await sendCrewMessage(buildReplyMessage(kind), { replyTo: target });
     setSending(null);
     if (!result.ok) {
       Alert.alert('Not sent', result.reason === 'not-ready'
