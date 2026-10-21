@@ -35,6 +35,10 @@ interface DeviceState {
   // Primary channel's module_settings.position_precision: undefined until the
   // config drain reports it, null if the channel has no module_settings.
   positionPrecision: number | null | undefined;
+  // The radio's primary channel exactly as the last config drain reported it
+  // (channelName above defaults to 'RNDVU' for display). Model 2 pairing reads
+  // it to adopt a shipped radio's crew key. In memory only, never persisted.
+  radioChannel: { name?: string; psk?: Uint8Array } | null;
   // Whether the Device/Connection troubleshooting sheet is open. Opened from the
   // tappable ConnectionBar and the header gear; rendered once at the app root.
   deviceSheetOpen: boolean;
@@ -55,6 +59,7 @@ interface DeviceState {
   setRegion: (region: number | null) => void;
   setChannelKeyFingerprint: (fp: string | null) => void;
   setPositionPrecision: (p: number | null) => void;
+  setRadioChannel: (ch: { name?: string; psk?: Uint8Array } | null) => void;
   setDeviceSheetOpen: (open: boolean) => void;
   setReleased: (released: boolean) => void;
   disconnect: () => void;
@@ -78,6 +83,7 @@ export const useDeviceStore = create<DeviceState>((set) => ({
   region: null,
   channelKeyFingerprint: null,
   positionPrecision: undefined,
+  radioChannel: null,
   deviceSheetOpen: false,
   released: false,
 
@@ -105,6 +111,7 @@ export const useDeviceStore = create<DeviceState>((set) => ({
   setRegion: (region) => set({ region }),
   setChannelKeyFingerprint: (channelKeyFingerprint) => set({ channelKeyFingerprint }),
   setPositionPrecision: (positionPrecision) => set({ positionPrecision }),
+  setRadioChannel: (radioChannel) => set({ radioChannel }),
   setDeviceSheetOpen: (deviceSheetOpen) => set({ deviceSheetOpen }),
   setReleased: (released) => set({ released }),
   disconnect: () =>
@@ -114,6 +121,8 @@ export const useDeviceStore = create<DeviceState>((set) => ({
       connectedDeviceName: null,
       myNodeNum: null,
       myNodeInfo: null,
+      // Another radio may be paired next; never adopt this one's key for it.
+      radioChannel: null,
     }),
 
   saveLastDevice: () => {

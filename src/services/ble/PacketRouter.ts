@@ -59,6 +59,7 @@ export function routeFromRadio(fromRadio: FromRadio, myNodeNum: number | null): 
     // Whether this radio broadcasts its position at all (see
     // isSharingLocation): surfaced in the Device sheet, fixed by Re-provision.
     useDeviceStore.getState().setPositionPrecision(fromRadio.channel.settings?.positionPrecision ?? null);
+    useDeviceStore.getState().setRadioChannel({ name: name || undefined, psk: fromRadio.channel.psk });
   }
 
   // LoRa region from the device config drain — surfaced in the Device sheet so a

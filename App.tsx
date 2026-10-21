@@ -20,6 +20,7 @@ import { useTagStore } from './src/store/useTagStore';
 import { useScheduleStore } from './src/store/useScheduleStore';
 import { useFestivalStore } from './src/store/useFestivalStore';
 import { useOfflineMapStore } from './src/store/useOfflineMapStore';
+import { useCrewKeyStore } from './src/store/useCrewKeyStore';
 import { festivalConfig } from './src/services/festival/FestivalConfig';
 import { bleService } from './src/services/ble/BleManager';
 import { RNDVU_CHANNEL_NAME } from './src/services/ble/MeshtasticCodec';
@@ -129,6 +130,7 @@ export default function App() {
     loadTags();
     loadMyGoingPicks();
     useFestivalStore.getState().loadOverride();
+    useCrewKeyStore.getState().load();
     // Re-pick the festival on the first phone GPS fix (location can narrow
     // the pick to the venue you're at). One-shot: later moves don't flip it.
     const unsubFirstFix = useCrewStore.subscribe((state) => {

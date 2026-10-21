@@ -177,8 +177,14 @@ function decodeChannel(bytes: Uint8Array): Channel {
       const ms = parseFields(sf.get(7)![0]);
       channel.settings.positionPrecision = ms.has(1) ? varintVal(ms.get(1)![0]) : 0;
     }
-    // ChannelSettings.psk = field 2 — hash to a fingerprint (never store the key).
-    if (sf.has(2)) channel.keyFingerprint = pskFingerprint(sf.get(2)![0]);
+    // ChannelSettings.psk = field 2. The fingerprint is what diagnostics show.
+    // The key itself is kept on the decoded channel only so Model 2 pairing
+    // can adopt the crew key a shipped radio was flashed with; it's never
+    // logged, and only the crew store persists it.
+    if (sf.has(2)) {
+      channel.keyFingerprint = pskFingerprint(sf.get(2)![0]);
+      channel.psk = sf.get(2)![0];
+    }
   }
   if (fields.has(3)) channel.role = varintVal(fields.get(3)![0]);
   return channel;
@@ -682,6 +688,68 @@ export function encodeSetChannel(
   return encodeAdminToRadio(myNodeNum, adminMessage);
 }
 
+// ── ChannelSet (Meshtastic's channel-sharing format) ────────────────────────
+//
+// ChannelSet { repeated ChannelSettings settings = 1; LoRaConfig lora_config = 2; }
+// It's what a meshtastic.org/e/# link or QR carries. RNDVU crew invites use
+// the same bytes, so an official-app user can join a crew and RNDVU can read
+// a Meshtastic QR.
+
+export interface SharedChannel {
+  name: string;
+  psk: Uint8Array;
+  positionPrecision?: number;
+}
+
+export interface SharedLora {
+  usePreset?: boolean;
+  modemPreset?: number; // 0 = LONG_FAST
+  region?: number;      // 1 = US
+  hopLimit?: number;
+  txEnabled?: boolean;
+}
+
+export function encodeChannelSet(channels: SharedChannel[], lora: SharedLora): Uint8Array {
+  const settings = channels.map(c => lenField(1, concat(
+    lenField(2, c.psk),
+    stringField(3, c.name),
+    ...(c.positionPrecision !== undefined ? [lenField(7, varField(1, c.positionPrecision))] : []),
+  )));
+  const loraParts: Uint8Array[] = [];
+  if (lora.usePreset !== undefined) loraParts.push(varField(1, lora.usePreset ? 1 : 0));
+  if (lora.modemPreset !== undefined) loraParts.push(varField(2, lora.modemPreset));
+  if (lora.region !== undefined) loraParts.push(varField(7, lora.region));
+  if (lora.hopLimit !== undefined) loraParts.push(varField(8, lora.hopLimit));
+  if (lora.txEnabled !== undefined) loraParts.push(varField(9, lora.txEnabled ? 1 : 0));
+  return concat(...settings, lenField(2, concat(...loraParts)));
+}
+
+export function decodeChannelSet(bytes: Uint8Array): { channels: SharedChannel[]; lora: SharedLora } {
+  const fields = parseFields(bytes);
+  const channels: SharedChannel[] = (fields.get(1) ?? []).map(raw => {
+    const sf = parseFields(raw);
+    const ch: SharedChannel = {
+      name: sf.has(3) ? decodeString(sf.get(3)![0]) : '',
+      psk: sf.has(2) ? sf.get(2)![0] : new Uint8Array(0),
+    };
+    if (sf.has(7)) {
+      const ms = parseFields(sf.get(7)![0]);
+      ch.positionPrecision = ms.has(1) ? varintVal(ms.get(1)![0]) : 0;
+    }
+    return ch;
+  });
+  const lora: SharedLora = {};
+  if (fields.has(2)) {
+    const lf = parseFields(fields.get(2)![0]);
+    if (lf.has(1)) lora.usePreset = varintVal(lf.get(1)![0]) !== 0;
+    if (lf.has(2)) lora.modemPreset = varintVal(lf.get(2)![0]);
+    if (lf.has(7)) lora.region = varintVal(lf.get(7)![0]);
+    if (lf.has(8)) lora.hopLimit = varintVal(lf.get(8)![0]);
+    if (lf.has(9)) lora.txEnabled = varintVal(lf.get(9)![0]) !== 0;
+  }
+  return { channels, lora };
+}
+
 // ── FromRadio encoders (for the MockFirmware simulator) ─────────────────────
 //
 // These produce the exact bytes a real T-Echo would emit on FROM_RADIO. The
@@ -819,9 +887,11 @@ export function encodeChannelMessage(channel: {
   name?: string;
   role?: number;
   positionPrecision?: number; // undefined = no module_settings on the channel
+  psk?: Uint8Array;
 }): Uint8Array {
   const parts: Uint8Array[] = [varField(1, channel.index)];
   const settings: Uint8Array[] = [];
+  if (channel.psk) settings.push(lenField(2, channel.psk));
   if (channel.name) settings.push(stringField(3, channel.name));
   if (channel.positionPrecision !== undefined) {
     settings.push(lenField(7, channel.positionPrecision ? varField(1, channel.positionPrecision) : new Uint8Array(0)));

@@ -273,5 +273,17 @@ describe(`RNDVU against meshtasticd ${FLEET_FIRMWARE} (sim)`, () => {
     // The reply went over the air addressed to b.
     expect(mesh.air.some(p => p.from === a && p.to === mesh.nodeNum('b') && p.portnum === PortNum.POSITION_APP)).toBe(true);
   });
+
+  // Last: it moves c to its own crew key.
+  test('Model 2: a crew key written at pairing comes back in the config drain (what adopting a shipped radio reads)', async () => {
+    const crewKey = Uint8Array.from({ length: 32 }, (_, i) => (i * 53 + 7) & 0xff);
+    await connectApp('c');
+    const mark = await rebootingStep('c', () =>
+      mgr.setChannel(0, RNDVU_CHANNEL_NAME, crewKey, 1, { longName: 'Cy', shortName: 'CY' }));
+    const primary = since(mark).map(p => p.channel).find(ch => ch?.role === 1);
+    expect(primary?.settings?.name).toBe(RNDVU_CHANNEL_NAME);
+    expect(primary?.psk).toEqual(crewKey);
+    expect(useDeviceStore.getState().radioChannel).toEqual({ name: RNDVU_CHANNEL_NAME, psk: crewKey });
+  });
 });
 
