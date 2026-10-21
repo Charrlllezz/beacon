@@ -192,7 +192,7 @@ export class MockFirmware {
       return;
     }
 
-    // Heartbeat → no-op (real firmware just resets the phone_timeout timer)
+    // Heartbeat → no-op (real firmware replies with a queue-status frame)
     if (fields.has(7)) return;
   }
 

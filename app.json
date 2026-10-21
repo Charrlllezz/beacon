@@ -24,6 +24,9 @@
           "bluetooth-central"
         ],
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "com.apple.developer.usernotifications.time-sensitive": true
       }
     },
     "plugins": [

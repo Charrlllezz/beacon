@@ -55,11 +55,12 @@ export default function DeviceScreen() {
     }
     setBusy(true);
     bleService.disconnect();
+    useDeviceStore.getState().setReleased(false);
     useDeviceStore.getState().setStatus('reconnecting');
     try {
-      await bleService.connect(deviceId);
+      await bleService.connect(deviceId, { autoRetry: true });
     } catch {
-      useDeviceStore.getState().setStatus('disconnected');
+      // Retries continue in the BLE layer, which owns the status from here.
     } finally {
       setBusy(false);
     }
@@ -68,10 +69,16 @@ export default function DeviceScreen() {
   function handleRelease() {
     Alert.alert(
       'Release Device?',
-      'Disconnects RNDVU from your T-Echo so another app (like Meshtastic) can use it. Tap Reconnect here to return.',
+      "Disconnects RNDVU from your T-Echo so another app (like Meshtastic) can use it. You won't get crew messages or notifications until you tap Reconnect here.",
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Release', onPress: () => bleService.disconnect() },
+        {
+          text: 'Release',
+          onPress: () => {
+            useDeviceStore.getState().setReleased(true);
+            bleService.disconnect();
+          },
+        },
       ],
     );
   }
@@ -205,7 +212,7 @@ export default function DeviceScreen() {
 
           <TouchableOpacity style={styles.action} onPress={handleRelease}>
             <Text style={styles.actionTitle}>Release Device</Text>
-            <Text style={styles.actionSub}>Hand the radio to the Meshtastic app or for OTA updates.</Text>
+            <Text style={styles.actionSub}>Hand the radio to the Meshtastic app or for OTA updates. RNDVU stays connected in the background otherwise.</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.action} onPress={handleResetPairing}>

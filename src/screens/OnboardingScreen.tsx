@@ -12,6 +12,7 @@ import { useCrewStore } from '../store/useCrewStore';
 import { bleService } from '../services/ble/BleManager';
 import { RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK } from '../services/ble/MeshtasticCodec';
 import { useMessagesStore } from '../store/useMessagesStore';
+import { requestNotificationPermission } from '../services/notifications/LocalNotifications';
 
 interface Props {
   onComplete: () => void;
@@ -72,6 +73,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
     setStep('connecting');
     setStatus('connecting');
     setConnectedDevice(deviceId, deviceName);
+    useDeviceStore.getState().setReleased(false);
 
     try {
       await bleService.connect(deviceId);
@@ -121,6 +123,11 @@ export default function OnboardingScreen({ onComplete }: Props) {
       try {
         await AsyncStorage.setItem('rndvu_onboarding_complete', 'true');
       } catch {}
+
+      // Bluetooth is granted and the radio is linked; now ask for
+      // notifications, so a locked phone surfaces crew messages and SOS.
+      // Declining is fine: the app works, it just stays quiet in a pocket.
+      await requestNotificationPermission();
 
       setStep('done');
     } catch (e: any) {

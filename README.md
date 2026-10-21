@@ -2,11 +2,11 @@
 
 Festival crew app for when there is no cell service. Everyone in the crew carries a cheap [Meshtastic](https://meshtastic.org) LoRa radio (a LilyGO T-Echo) paired to their phone over Bluetooth; the radios form a mesh with no towers and no Wi-Fi. RNDVU sits on top of that mesh and answers the questions crews actually have once they get separated: where is everyone, where and when are we meeting, who needs help, and who's going to which set. Started as "Beacon" (hence the repo name); rebranded RNDVU in April 2026.
 
-**Status: working prototype, built for Coachella 2026 Weekend 2.** Real Bluetooth against real radios, a TestFlight build, and 63 passing tests. The git history records a TestFlight build and hardware debugging with testers; it does not record festival-day use, so this README doesn't claim it. See [Status](#status).
+**Status: working prototype, built for Coachella 2026 Weekend 2.** Real Bluetooth against real radios, a TestFlight build, and 89 passing tests. The git history records a TestFlight build and hardware debugging with testers; it does not record festival-day use, so this README doesn't claim it. See [Status](#status).
 
 ```bash
 npm install                # lockfile + .npmrc (legacy-peer-deps)
-npm test                   # vitest: codec, mock firmware, message protocol
+npm test                   # vitest: codec, mock firmware, BLE manager, message protocol
 npx expo run:ios           # native build; BLE and maps rule out Expo Go
 ```
 
@@ -35,8 +35,9 @@ MockBleManager ──► MockFirmware (virtual radio; emits real protobuf bytes,
 
 - **`src/services/ble/`** — `RealBleManager` (549 lines) owns the GATT session; `MeshtasticCodec` (768) encodes and decodes; `PacketRouter` fans each `FromRadio` into the stores. `MockFirmware` + `MockPeers` + `MockScenarios` are the simulator.
 - **`src/services/mesh/MessageService.ts`** — the `MF:` protocol (below). **`src/services/map/TilePrefetch.ts`** — offline tiles. **`src/services/festival/FestivalConfig.ts`** — reads `src/config/festivals/coachella-w2-2026.json`.
-- **`src/store/`** — six zustand stores; everything that matters persists to AsyncStorage (messages capped at 500, debounced, flushed on background; crew aged out after 7 days; picks, tags, colour, display name, last radio).
-- **`App.tsx`** — wires BLE listeners once at the root, runs phone GPS, auto-reconnects on launch and foreground, and releases the radio on background because a T-Echo accepts one BLE central at a time.
+- **`src/store/`** — six zustand stores; everything that matters persists to AsyncStorage (messages capped at 500, debounced in the foreground and written immediately in the background; crew aged out after 7 days; picks, tags, colour, display name, last radio).
+- **`src/services/notifications/`** — local notifications (no push server) for texts, rally points, meetups and SOS that arrive while the app is backgrounded; SOS is time-sensitive.
+- **`App.tsx`** — wires BLE listeners once at the root, runs phone GPS in the foreground, and auto-reconnects on launch and foreground. The radio stays connected in the background; a T-Echo accepts one BLE central at a time, so handing it to the Meshtastic app is an explicit **Release Device**.
 
 ## The interesting parts
 
@@ -56,7 +57,9 @@ MockBleManager ──► MockFirmware (virtual radio; emits real protobuf bytes,
 
 **A hand-written protobuf codec, and a virtual radio to test it.** No generated code: `MeshtasticCodec.ts` reads varint / length-delimited / fixed32 / float fields straight off the wire and encodes `ToRadio`, `AdminMessage`, and every `FromRadio` variant the app cares about. It also has *encoders* for the radio's side, and that is what `MockFirmware` uses: a 381-line in-process Meshtastic that consumes the app's real `ToRadio` bytes, dispatches admin messages, keeps a node DB, reboots on command, and emits real `FromRadio` bytes that the app decodes through the same path as hardware. Seven scenarios (normal, solo, flaky BLE, 25-peer crew, late joiner, stale peer, wrong channel) and the Debug screen drive it. The bugs this caught are in the tests: `latitude_i` is `sfixed32`, not varint, so western-hemisphere positions decoded as garbage; `want_ack` on a broadcast triggers Meshtastic's reliable-broadcast flood and stalls a busy channel for minutes.
 
-**BLE against real iPhones.** The comments in `RealBleManager` read like a field log: no MTU negotiation because it caused 1-second connect failures on an iPhone 13; reads paced at 200 ms because older BLE stacks tear the GATT session down under load; a single-flight guard because the notify, the 5 s backup poll and the config drain all pop the same FIFO; a 60 s heartbeat so firmware doesn't drop an idle phone; exponential backoff from 500 ms to 15 s over ten attempts.
+**BLE against real iPhones.** The comments in `RealBleManager` read like a field log: no MTU negotiation because it caused 1-second connect failures on an iPhone 13; reads paced at 200 ms because older BLE stacks tear the GATT session down under load; a single-flight guard because the notify, the 5 s backup poll and the config drain all pop the same FIFO; exponential backoff from 500 ms to 15 s over ten attempts.
+
+**Locked in a pocket.** iOS keeps the GATT session up under the `bluetooth-central` background mode and wakes the app for each FROM_NUM notify, but JS timers don't run while suspended. So the backup poll and the heartbeat can't be relied on there; delivery rides on the notify, and a notify that lands mid-drain re-runs the drain instead of being dropped. A link lost in the background (or after the fast retries) becomes a CoreBluetooth connect with no timeout, which iOS completes whenever the radio is reachable again. CoreBluetooth state restoration lets iOS relaunch the app for a BLE event after killing it, and connect adopts the link iOS kept. The heartbeat isn't what keeps the link alive: on the T-Echo's nRF52 the firmware's lost-phone check is the physical BLE link, not an idle timer. `RealBleManager.test.ts` drives all of this against a fake ble-plx backed by `MockFirmware`.
 
 **Offline satellite maps.** `TilePrefetch` downloads ESRI World Imagery for a 5.6 km box around the venue at zoom 14–18 (2,746 tiles) into the app's documents directory and hands the path to `react-native-maps`' `UrlTile` with `offlineMode` on when you're near the venue. Tiles are written with no extension because the native cache reads `{z}/{x}/{y}` verbatim; with `.jpg` every tile was invisible and the map silently fell back to the network.
 
@@ -66,7 +69,7 @@ MockBleManager ──► MockFirmware (virtual radio; emits real protobuf bytes,
 
 ## Status
 
-Verified in this tree: `tsc` clean, `vitest` 63/63. `USE_MOCK = false`, so the checked-in build talks to hardware.
+Verified in this tree: `tsc` clean, `vitest` 89/89. `USE_MOCK = false`, so the checked-in build talks to hardware.
 
 Known gaps, all noted in the code:
 

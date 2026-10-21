@@ -7,10 +7,25 @@ const MAX_MESSAGES = 500;
 const PERSIST_DEBOUNCE_MS = 5000;
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+// While backgrounded, iOS only gives us a few seconds per BLE wake before
+// suspending again, and may kill a suspended app outright. A 5s debounce can
+// outlive that window, so background arrivals are written straight away.
+let persistImmediately = false;
+
+export function setPersistImmediately(immediate: boolean): void {
+  persistImmediately = immediate;
+  if (immediate) flushPendingPersist();
+}
 
 function debouncedPersist(messages: Message[]) {
   if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = null;
+  if (persistImmediately) {
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(messages)).catch(() => {});
+    return;
+  }
   persistTimer = setTimeout(() => {
+    persistTimer = null;
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(messages)).catch(() => {});
   }, PERSIST_DEBOUNCE_MS);
 }
@@ -36,7 +51,9 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
       const messages = state.messages.length >= MAX_MESSAGES
         ? [...state.messages.slice(1), message]
         : [...state.messages, message];
-      debouncedPersist(messages);
+      // Before the stored history has loaded, a write would replace it with
+      // just these early arrivals. loadMessages merges and persists instead.
+      if (state.isLoaded) debouncedPersist(messages);
       return { messages };
     });
   },
@@ -51,7 +68,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         }
         return m;
       });
-      if (changed) debouncedPersist(messages);
+      if (changed && state.isLoaded) debouncedPersist(messages);
       return { messages };
     });
   },
@@ -59,12 +76,14 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   loadMessages: async () => {
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const messages: Message[] = JSON.parse(raw);
-        set({ messages, isLoaded: true });
-      } else {
-        set({ isLoaded: true });
-      }
+      const stored: Message[] = raw ? JSON.parse(raw) : [];
+      // Merge rather than replace: when iOS relaunches us in the background
+      // for a BLE event, packets can be routed before this read resolves.
+      const storedIds = new Set(stored.map(m => m.id));
+      const arrivedEarly = get().messages.filter(m => !storedIds.has(m.id));
+      const messages = [...stored, ...arrivedEarly].slice(-MAX_MESSAGES);
+      set({ messages, isLoaded: true });
+      if (arrivedEarly.length > 0) debouncedPersist(messages);
     } catch {
       set({ isLoaded: true });
     }
@@ -88,5 +107,6 @@ export function flushPendingPersist(): void {
     clearTimeout(persistTimer);
     persistTimer = null;
   }
+  if (!useMessagesStore.getState().isLoaded) return;
   AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(useMessagesStore.getState().messages)).catch(() => {});
 }
