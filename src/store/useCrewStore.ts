@@ -33,7 +33,7 @@ interface CrewState {
   sortMode: CrewSortMode;
 
   upsertMember: (member: Partial<CrewMember> & { nodeId: number }) => void;
-  updateLocation: (nodeId: number, lat: number, lng: number) => void;
+  updateLocation: (nodeId: number, lat: number, lng: number, atSecs?: number) => void;
   updateBattery: (nodeId: number, level: number) => void;
   updateColor: (nodeId: number, color: string) => void;
   updateSnr: (nodeId: number, snr: number) => void;
@@ -92,13 +92,17 @@ export const useCrewStore = create<CrewState>((set, get) => ({
   // synthesize "Unknown / ???" stubs before NodeInfo arrives, or the crew
   // list fills with ghosts. Once upsertMember creates a real entry, these
   // updates then apply.
-  updateLocation: (nodeId, lat, lng) =>
+  updateLocation: (nodeId, lat, lng, atSecs = Math.floor(Date.now() / 1000)) =>
     set((state) => {
-      if (!state.crewMembers[nodeId]) return state;
+      const existing = state.crewMembers[nodeId];
+      if (!existing) return state;
+      // The radio's node DB replays old positions on connect. Don't let an
+      // older fix replace a newer one (or make a pin look fresher than it is).
+      if (existing.locationAt && atSecs < existing.locationAt) return state;
       return {
         crewMembers: {
           ...state.crewMembers,
-          [nodeId]: { ...state.crewMembers[nodeId], lat, lng },
+          [nodeId]: { ...existing, lat, lng, locationAt: atSecs },
         },
       };
     }),

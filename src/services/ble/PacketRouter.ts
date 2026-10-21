@@ -9,6 +9,7 @@ import { useDeviceStore } from '../../store/useDeviceStore';
 import { useScheduleStore } from '../../store/useScheduleStore';
 import { useTagStore } from '../../store/useTagStore';
 import { latLngFromI } from '../../utils/coordinates';
+import { positionTimestamp } from '../../utils/pinAge';
 
 const SEEN_PACKET_MAX = 1000;
 const seenPacketIds = new Set<number>();
@@ -108,7 +109,10 @@ export function routeFromRadio(fromRadio: FromRadio, myNodeNum: number | null): 
         if (isSelf) {
           useCrewStore.getState().setMyLocation(lat, lng);
         } else {
-          useCrewStore.getState().updateLocation(nodeInfo.num, lat, lng);
+          useCrewStore.getState().updateLocation(
+            nodeInfo.num, lat, lng,
+            positionTimestamp(nodeInfo.position.time, nodeInfo.lastHeard),
+          );
         }
       }
     }
@@ -204,7 +208,10 @@ function routePacket(packet: MeshPacket, myNodeNum: number | null): void {
         if (packet.from === myNodeNum) {
           useCrewStore.getState().setMyLocation(lat, lng);
         } else {
-          useCrewStore.getState().updateLocation(packet.from, lat, lng);
+          useCrewStore.getState().updateLocation(
+            packet.from, lat, lng,
+            positionTimestamp(pos.time, packet.rxTime),
+          );
         }
       }
       break;
