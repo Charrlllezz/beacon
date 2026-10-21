@@ -20,6 +20,7 @@ import { useMessagesStore } from '../store/useMessagesStore';
 import { useDeviceStore } from '../store/useDeviceStore';
 import { hapticMedium } from '../utils/haptics';
 import { pinAge } from '../utils/pinAge';
+import { PHONE_DEAD_TIP } from '../config/safetyCopy';
 import type { TagCategory, TagScope, TaggedPOI } from '../types/festival';
 
 const CATEGORY_COLORS: Record<TagCategory, string> = {
@@ -427,10 +428,12 @@ export default function MapScreen() {
       </Modal>
 
       <FirstOpenTip
-        storageKey="rndvu_tip_map"
+        // v2: re-shown once so existing testers learn about pin age.
+        storageKey="rndvu_tip_map_v2"
         title="Your Crew Map"
         tips={[
-          { icon: '📍', title: 'Crew Pins', description: "Tap a crew member's pin to zoom in on their location" },
+          { icon: '📍', title: 'Crew Pins', description: "The label under a pin says how old it is. Faded pins are over 15 minutes old: where they were, not where they are." },
+          { icon: '🔋', title: 'Phone dying?', description: PHONE_DEAD_TIP },
           { icon: '🏷️', title: 'Tag Spots', description: 'Use the Tag Spot button to mark useful spots like water, food, or restrooms for your crew' },
           { icon: '🔍', title: 'Search & Filter', description: 'Use the search bar and filter chips to find tagged locations' },
         ]}

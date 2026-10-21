@@ -6,7 +6,7 @@ You're the first crew to use this at a real festival, so everything you notice h
 
 ## At home (a few days before)
 
-1. **Install RNDVU.** Open the TestFlight link Charles sent you, install TestFlight if asked, then install RNDVU.
+1. **Install RNDVU.** Open the TestFlight link Charles sent you, install TestFlight if asked, then install RNDVU. Everyone needs this exact build: the crew's channel is private to it, and radios set up by another build can't read the crew.
 2. **Charge your radio** and turn it on. If you have the Meshtastic app, close it first (swipe it away), because it can hold the radio.
 3. **Open RNDVU on Wi-Fi** and follow the setup:
    - Enter your name. This is how the crew sees you.
@@ -17,6 +17,7 @@ You're the first crew to use this at a real festival, so everything you notice h
    - **Region: US**
    - **Location sharing: on**
    - **Offline map: ready ✓** (this takes a minute or two on Wi-Fi; leave the app open until it shows)
+   - **Channel key** ends in **(private)**. If it says "not this crew's key", tap **Re-provision Device**.
 
 If something there is red, tap **Re-provision Device**. If it's still red, screenshot it and send it to Charles.
 
@@ -28,7 +29,8 @@ If something there is red, tap **Re-provision Device**. If it's still red, scree
   - **Rally Point:** "come to me / this spot", with a note
   - **Set Meetup:** a time and a place
   - **Need Help:** shows the crew where you are. **It only alerts your crew. It does not contact security or 911.** Find staff or medical for emergencies.
-- **Map:** crew pins update roughly every 15 minutes, or sooner when someone moves. A pin can be a few minutes old.
+- **Map:** crew pins update roughly every 15 minutes, or sooner when someone moves. The small label under each pin says how old it is ("3m", "40m"), and pins older than 15 minutes fade out. Faded means "was here", not "is here".
+- **If your phone dies, keep the radio on.** The radio sends its own location, so your crew can still see where you are.
 - **If you see "DISCONNECTED — Tap to fix":** tap it, then **Reconnect**. Check the radio is on and close by.
 - **Battery:** bring a phone battery pack. Charge the radio fully before you leave home.
 
