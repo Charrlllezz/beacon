@@ -15,6 +15,8 @@ import {
   encodeFromRadioPacket,
   RNDVU_CHANNEL_PSK,
   MESSAGE_HOP_LIMIT,
+  encodeSetTelemetryConfig,
+  DEVICE_TELEMETRY_INTERVAL_SECS,
 } from './MeshtasticCodec';
 import { PortNum } from '../../types/mesh';
 import { getField, varintOf } from './sim/wire';
@@ -72,6 +74,20 @@ describe('encodeToRadio', () => {
       expect(varintOf(getField(packet, 9))).toBe(MESSAGE_HOP_LIMIT);
     }
     expect(MESSAGE_HOP_LIMIT).toBe(3);
+  });
+});
+
+describe('encodeSetTelemetryConfig', () => {
+  test('turns device telemetry (battery) on at a 30 min interval, sensors off', () => {
+    const packet = getField(encodeSetTelemetryConfig(0x1234), 1)!.value;
+    const data = getField(packet, 4)!.value;
+    expect(varintOf(getField(data, 1))).toBe(PortNum.ADMIN_APP);
+    const admin = getField(data, 2)!.value;
+    const telemetry = getField(getField(admin, 35)!.value, 6)!.value; // set_module_config.telemetry
+    expect(varintOf(getField(telemetry, 14))).toBe(1);   // device_telemetry_enabled
+    expect(varintOf(getField(telemetry, 1))).toBe(DEVICE_TELEMETRY_INTERVAL_SECS);
+    expect(DEVICE_TELEMETRY_INTERVAL_SECS).toBe(1800);
+    for (const f of [3, 6, 8, 11]) expect(varintOf(getField(telemetry, f))).toBe(0); // sensors off
   });
 });
 

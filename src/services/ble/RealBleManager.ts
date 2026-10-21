@@ -7,7 +7,7 @@ import {
   TO_RADIO_UUID,
   FROM_NUM_UUID,
 } from './ConnectionState';
-import { decodeFromRadio, encodeToRadio, encodeWantConfig, encodeSetChannel, encodeBeginEditSettings, encodeCommitEditSettings, encodeDisableChannel, encodeSetLoraConfig, encodeHeartbeat, encodeSetOwner, encodeFactoryReset, encodeSetPositionConfig } from './MeshtasticCodec';
+import { decodeFromRadio, encodeToRadio, encodeWantConfig, encodeSetChannel, encodeBeginEditSettings, encodeCommitEditSettings, encodeDisableChannel, encodeSetLoraConfig, encodeHeartbeat, encodeSetOwner, encodeFactoryReset, encodeSetPositionConfig, encodeSetTelemetryConfig } from './MeshtasticCodec';
 import { useDeviceStore } from '../../store/useDeviceStore';
 
 export type PacketCallback = (fromRadio: FromRadio) => void;
@@ -367,7 +367,7 @@ export class RealBleManager {
 
   /**
    * Full device configuration: LoRa region/modem, the RNDVU channel, stale
-   * channels disabled, and (when given) the owner name, so every device ends up
+   * channels disabled, battery broadcasts on, and (when given) the owner name, so every device ends up
    * in the same state regardless of prior configuration.
    *
    * One edit transaction, one commit, one reboot. The commit has to be the
@@ -399,6 +399,8 @@ export class RealBleManager {
     for (let i = 1; i <= 7; i++) {
       await this.writeAdmin(encodeDisableChannel(myNodeNum, i));
     }
+    // Battery broadcasts to the crew (off by default since firmware 2.7.13).
+    await this.writeAdmin(encodeSetTelemetryConfig(myNodeNum));
     if (owner) await this.writeAdmin(encodeSetOwner(myNodeNum, owner.longName, owner.shortName));
     // Saves everything, drops Bluetooth and reboots; auto-reconnect restores the link.
     await this.writeAdmin(encodeCommitEditSettings(myNodeNum));

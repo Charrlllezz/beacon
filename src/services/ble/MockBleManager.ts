@@ -10,6 +10,7 @@ import {
   encodeSetLoraConfig,
   encodeFactoryReset,
   encodeSetPositionConfig,
+  encodeSetTelemetryConfig,
 } from './MeshtasticCodec';
 import { MockFirmware, COMMIT_REBOOT_SECONDS } from './MockFirmware';
 import type { VirtualPeer } from './MockPeers';
@@ -136,6 +137,7 @@ export class MockBleManager {
     for (let i = 1; i <= 7; i++) {
       await this.writeAdmin(encodeDisableChannel(myNodeNum, i));
     }
+    await this.writeAdmin(encodeSetTelemetryConfig(myNodeNum));
     if (owner) await this.writeAdmin(encodeSetOwner(myNodeNum, owner.longName, owner.shortName));
     await this.writeAdmin(encodeCommitEditSettings(myNodeNum));
     this.scheduleReboot(COMMIT_REBOOT_SECONDS * 1000 + 200);

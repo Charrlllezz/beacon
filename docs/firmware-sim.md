@@ -27,8 +27,9 @@ interactive simulator:
 | Test | What it proves on real firmware |
 | --- | --- |
 | Config drain | The codec decodes the firmware's startup dump: version, node number, config-complete |
-| Pairing | One transaction sets region US, the RNDVU channel with position precision 32, the name, and channels 1–7 off. One reboot, then the app reconnects |
+| Pairing | One transaction sets region US, the RNDVU channel with position precision 32, battery broadcasts on, the name, and channels 1–7 off. One reboot, then the app reconnects |
 | Rename | A later rename (a lone `setOwner`) reboots the radio once, and the app reconnects |
+| Battery | Pairing turns battery broadcasts on, and c's battery reaches the app on a over two hops |
 | Text a → c | A message from the app reaches b directly and c over two hops |
 | Text c → app | A crew message lands in the app's message store |
 | Position | A phone-shared position reaches the crew without losing precision |

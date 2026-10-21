@@ -97,7 +97,7 @@ const CrewMemberCard = memo(({ member, myLocation, onFindOnMap, watchingStatus, 
               <View
                 style={[
                   styles.batteryFill,
-                  { width: `${member.batteryLevel}%` as any, backgroundColor: batColor },
+                  { width: `${Math.min(member.batteryLevel, 100)}%` as any, backgroundColor: batColor },
                 ]}
               />
             </View>
