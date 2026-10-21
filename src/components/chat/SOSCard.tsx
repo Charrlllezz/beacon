@@ -6,6 +6,7 @@ import { timeAgo } from '../../utils/time';
 import { haversineDistance, formatDistance } from '../../utils/coordinates';
 import { useCrewStore } from '../../store/useCrewStore';
 import { festivalConfig } from '../../services/festival/FestivalConfig';
+import { NOT_EMERGENCY_SERVICES } from '../../config/safetyCopy';
 
 interface Props {
   message: SOSMessage;
@@ -62,7 +63,10 @@ export default function SOSCard({ message }: Props) {
           <Text style={styles.navigateText}>Navigate</Text>
         </TouchableOpacity>
       </View>
-      <Text style={styles.time}>{timeAgo(message.timestamp / 1000)}</Text>
+      <View style={styles.footer}>
+        <Text style={styles.notice}>{NOT_EMERGENCY_SERVICES}</Text>
+        <Text style={styles.time}>{timeAgo(message.timestamp / 1000)}</Text>
+      </View>
     </Animated.View>
   );
 }
@@ -109,5 +113,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   navigateText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '800' },
+  footer: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.sm },
+  notice: { flex: 1, fontSize: FontSize.xs, color: Colors.textSecondary },
   time: { fontSize: FontSize.xs, color: Colors.error + 'aa', alignSelf: 'flex-end' },
 });

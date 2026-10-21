@@ -29,6 +29,7 @@ import {
   parseMessage,
 } from '../services/mesh/MessageService';
 import { hapticLight, hapticMedium, hapticWarning } from '../utils/haptics';
+import { NOT_EMERGENCY_SERVICES } from '../config/safetyCopy';
 
 function to12Hour(h24: number): { hour12: number; ampm: 'AM' | 'PM' } {
   const ampm = h24 >= 12 ? 'PM' : 'AM';
@@ -157,7 +158,7 @@ export default function ChatScreen() {
     hapticWarning();
     Alert.alert(
       'Send SOS?',
-      'This will alert your entire crew with your location. Only use in a real emergency.',
+      `This alerts your crew with your location. ${NOT_EMERGENCY_SERVICES}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
