@@ -2,7 +2,7 @@
 
 Festival crew app for when there is no cell service. Everyone in the crew carries a cheap [Meshtastic](https://meshtastic.org) LoRa radio (a LilyGO T-Echo) paired to their phone over Bluetooth; the radios form a mesh with no towers and no Wi-Fi. RNDVU sits on top of that mesh and answers the questions crews actually have once they get separated: where is everyone, where and when are we meeting, who needs help, and who's going to which set. Started as "Beacon" (hence the repo name); rebranded RNDVU in April 2026.
 
-**Status: working prototype, built for Coachella 2026 Weekend 2.** Real Bluetooth against real radios, a TestFlight build, and 124 passing tests. The git history records a TestFlight build and hardware debugging with testers; it does not record festival-day use, so this README doesn't claim it. See [Status](#status).
+**Status: working prototype, built for Coachella 2026 Weekend 2.** Real Bluetooth against real radios, a TestFlight build, and 125 passing tests. The git history records a TestFlight build and hardware debugging with testers; it does not record festival-day use, so this README doesn't claim it. See [Status](#status).
 
 ```bash
 npm install                # lockfile + .npmrc (legacy-peer-deps)
@@ -69,7 +69,7 @@ MockBleManager ──► MockFirmware (virtual radio; emits real protobuf bytes,
 
 ## Status
 
-Verified in this tree: `tsc` clean, `vitest` 124/124. `USE_MOCK = false`, so the checked-in build talks to hardware.
+Verified in this tree: `tsc` clean, `vitest` 125/125. `USE_MOCK = false`, so the checked-in build talks to hardware. Radios run one pinned firmware version; see [docs/fleet-firmware.md](docs/fleet-firmware.md).
 
 Known gaps, all noted in the code:
 
