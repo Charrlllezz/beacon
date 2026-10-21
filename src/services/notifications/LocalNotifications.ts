@@ -1,7 +1,7 @@
 import { AppState } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import type { Message, MeetupMessage } from '../../types/messages';
-import { noticeForMessage } from './NotificationPolicy';
+import { noticeForMessage, type SosContext } from './NotificationPolicy';
 import { meetupReminderAt } from '../../utils/meetupTime';
 import { formatClock } from '../../utils/time';
 
@@ -78,16 +78,23 @@ export async function requestNotificationPermission(): Promise<boolean> {
   }
 }
 
-export function notifyForMessage(message: Message, myNodeNum: number | null, replyTarget?: Message): void {
+export function notifyForMessage(
+  message: Message,
+  myNodeNum: number | null,
+  replyTarget?: Message,
+  sos?: SosContext,
+): void {
   const notice = noticeForMessage(message, {
     // 'inactive' (app switcher, Control Center) counts as away: the user
     // isn't looking at the chat.
     appActive: AppState.currentState === 'active',
     myNodeNum,
     replyTarget,
+    sos,
   });
   if (!notice) return;
   Notifications.scheduleNotificationAsync({
+    ...(notice.replaceKey ? { identifier: notice.replaceKey } : {}),
     content: {
       title: notice.title,
       body: notice.body,

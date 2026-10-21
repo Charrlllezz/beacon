@@ -5,6 +5,7 @@ import { useDeviceStore } from '../../store/useDeviceStore';
 import { useCrewStore } from '../../store/useCrewStore';
 import { Colors, FontSize } from '../../config/theme';
 import { summarizeCrew, summaryLine, type SummaryTone } from '../../utils/crewSummary';
+import SosBanner from './SosBanner';
 
 const TONE_COLOR: Record<SummaryTone, string> = {
   good: Colors.success,
@@ -20,8 +21,13 @@ const TONE_COLOR: Record<SummaryTone, string> = {
  */
 export default function ConnectionBar() {
   const status = useDeviceStore(s => s.status);
-  if (status === 'connected') return <CrewStrip />;
-  return <LinkProblemBar status={status} />;
+  return (
+    <>
+      {/* An active SOS (yours or someone's) sits above everything else. */}
+      <SosBanner />
+      {status === 'connected' ? <CrewStrip /> : <LinkProblemBar status={status} />}
+    </>
+  );
 }
 
 function CrewStrip() {

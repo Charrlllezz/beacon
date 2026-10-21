@@ -32,6 +32,8 @@ import {
   cancelMeetupReminder,
 } from './src/services/notifications/LocalNotifications';
 import { reminderActions } from './src/services/notifications/meetupReminderSync';
+import { notificationContext } from './src/utils/sos';
+import { loadActiveSos, tickSos, hiddenSos } from './src/services/sos/SosController';
 import { getLocationLabel } from './src/components/chat/MeetupCard';
 
 const DISPLAY_NAME_KEY = 'rndvu_display_name';
@@ -94,11 +96,16 @@ export default function App() {
     // The policy (NotificationPolicy) decides; foreground arrivals stay silent.
     configureNotifications();
     unsubRef.current.notify = onMeshMessage((message) => {
-      const replyTarget = message.replyTo
-        ? useMessagesStore.getState().messages.find(m => m.packetId === message.replyTo)
-        : undefined;
-      notifyForMessage(message, useDeviceStore.getState().myNodeNum, replyTarget);
+      const myNodeNum = useDeviceStore.getState().myNodeNum;
+      const ctx = notificationContext(useMessagesStore.getState().messages, message, myNodeNum, hiddenSos);
+      notifyForMessage(message, myNodeNum, ctx.replyTarget, ctx.sos);
     });
+    // An active SOS repeats every 2 minutes. JS timers stop while iOS has us
+    // suspended, so also check on every packet from the radio: each one wakes
+    // the app. Both no-op unless something is due.
+    loadActiveSos().then(() => tickSos());
+    const sosTimer = setInterval(() => { tickSos(); }, 15_000);
+    const unsubSosWake = bleService.onPacket(() => { tickSos(); });
     // Meetup reminders follow the message list: new meetups (sent, received,
     // or loaded at launch) get one; my "Can't make it" drops it.
     const unsubReminders = useMessagesStore.subscribe((state, prev) => {
@@ -139,6 +146,8 @@ export default function App() {
       unsubRef.current.status?.();
       unsubRef.current.notify?.();
       unsubReminders();
+      clearInterval(sosTimer);
+      unsubSosWake();
       unsubFirstFix();
       stopPhoneGps();
     };

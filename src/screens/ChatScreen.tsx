@@ -30,6 +30,7 @@ import {
 } from '../services/mesh/MessageService';
 import { hapticLight, hapticMedium, hapticWarning } from '../utils/haptics';
 import { sendCrewMessage } from '../services/mesh/send';
+import { startSos, useSosStore } from '../services/sos/SosController';
 import { NOT_EMERGENCY_SERVICES } from '../config/safetyCopy';
 
 function to12Hour(h24: number): { hour12: number; ampm: 'AM' | 'PM' } {
@@ -148,10 +149,14 @@ export default function ChatScreen() {
       Alert.alert('No Location', "Your location isn't available yet. Make sure location access is enabled.");
       return;
     }
+    if (useSosStore.getState().active) {
+      Alert.alert('SOS already on', "Your crew is getting your location every 2 minutes. Tap I'm OK at the top when you're safe.");
+      return;
+    }
     hapticWarning();
     Alert.alert(
       'Send SOS?',
-      `This alerts your crew with your location. ${NOT_EMERGENCY_SERVICES}`,
+      `Your crew gets your location now and every 2 minutes until you tap I'm OK. ${NOT_EMERGENCY_SERVICES}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -159,13 +164,14 @@ export default function ChatScreen() {
           style: 'destructive',
           onPress: async () => {
             hapticWarning();
-            await sendRaw(buildSOSMessage(myLocation.lat, myLocation.lng));
             setShowQuickActions(false);
+            await startSos();
+            scrollToBottom();
           },
         },
       ],
     );
-  }, [myLocation, sendRaw]);
+  }, [myLocation, scrollToBottom]);
 
   const openMeetupPicker = useCallback(() => {
     setShowQuickActions(false);

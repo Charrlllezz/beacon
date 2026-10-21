@@ -38,6 +38,9 @@ export interface RallyMessage extends BaseMessage {
   note?: string;
 }
 
+// The first SOS starts a thread. While it's active the sender's phone repeats
+// it with a fresh location every 2 minutes, each repeat an SOS whose replyTo
+// is the first one's packetId, until the sender sends a 'safe' reply.
 export interface SOSMessage extends BaseMessage {
   type: 'sos';
   lat: number;
@@ -82,9 +85,10 @@ export interface MeetupMessage extends BaseMessage {
   note?: string;
 }
 
-// One-tap answers. omw / cant answer a rally or meetup; coming answers an SOS.
-export type ReplyKind = 'omw' | 'cant' | 'coming';
-export const REPLY_KINDS: readonly ReplyKind[] = ['omw', 'cant', 'coming'];
+// One-tap answers. omw / cant answer a rally or meetup; coming answers an SOS;
+// safe is the SOS sender cancelling their own SOS.
+export type ReplyKind = 'omw' | 'cant' | 'coming' | 'safe';
+export const REPLY_KINDS: readonly ReplyKind[] = ['omw', 'cant', 'coming', 'safe'];
 
 // MF:Y:<kind>, with replyTo set from the packet's reply_id. Never a chat
 // bubble: shown on the card it answers.

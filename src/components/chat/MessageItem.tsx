@@ -17,7 +17,8 @@ const MessageItem = memo(({ item, myNodeNum }: Props) => {
   switch (item.type) {
     case 'heading': return <HeadingCard message={item} isMine={isMine} />;
     case 'rally':   return <RallyCard   message={item} isMine={isMine} />;
-    case 'sos':     return <SOSCard     message={item} />;
+    // One card per SOS: repeats update it (SOSCard renders only the thread head).
+    case 'sos':     return <SOSCard message={item} isMine={isMine} />;
     case 'meetup':  return <MeetupCard  message={item} isMine={isMine} />;
     case 'going': {
       const stage = festivalConfig.getStage(item.stageId);
