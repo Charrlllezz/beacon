@@ -1,5 +1,5 @@
-import type { Message, TextMessage, HeadingMessage, RallyMessage, SOSMessage, GoingMessage, UngoingMessage, CalibrationMessage, ColorMessage, TagMessage, MeetupMessage } from '../../types/messages';
-import type { GpsPoint, TagCategory } from '../../types/festival';
+import type { Message, TextMessage, HeadingMessage, RallyMessage, SOSMessage, GoingMessage, UngoingMessage, ColorMessage, TagMessage, MeetupMessage } from '../../types/messages';
+import type { TagCategory } from '../../types/festival';
 
 let _seq = 0;
 
@@ -62,22 +62,8 @@ export function parseMessage(
         if (!stageId || !artistId) throw new Error('Missing fields');
         return { ...base, type: 'ungoing', stageId, artistId } as UngoingMessage;
       }
-      case 'C': {
-        const tlPart = parts[2];
-        const brPart = parts[3];
-        if (!tlPart || !brPart) throw new Error('Missing anchor parts');
-        const [tlLat, tlLng] = tlPart.split(',').map(Number);
-        const [brLat, brLng] = brPart.split(',').map(Number);
-        if ([tlLat, tlLng, brLat, brLng].some(isNaN)) throw new Error('Invalid coords');
-        return {
-          ...base,
-          type: 'calibration',
-          anchors: {
-            topLeft: { lat: tlLat, lng: tlLng },
-            bottomRight: { lat: brLat, lng: brLng },
-          },
-        } as CalibrationMessage;
-      }
+      // 'C' (Beacon-era map calibration) is retired: it falls through to the
+      // default text case here, and PacketRouter drops it before parsing.
       case 'K': {
         const color = parts[2];
         if (!color) throw new Error('Missing color');
@@ -153,11 +139,6 @@ export function buildNotGoingMessage(stageId: string, artistId: string): string 
 
 export function buildColorMessage(color: string): string {
   return `MF:K:${color}`;
-}
-
-export function buildCalibrationMessage(anchors: { topLeft: GpsPoint; bottomRight: GpsPoint }): string {
-  const { topLeft: tl, bottomRight: br } = anchors;
-  return `MF:C:${tl.lat.toFixed(6)},${tl.lng.toFixed(6)}:${br.lat.toFixed(6)},${br.lng.toFixed(6)}`;
 }
 
 export function buildTagMessage(lat: number, lng: number, name: string, category: TagCategory = 'custom'): string {

@@ -15,7 +15,6 @@ import DeviceScreen from './src/screens/DeviceScreen';
 import { useMessagesStore, flushPendingPersist, setPersistImmediately } from './src/store/useMessagesStore';
 import { useDeviceStore, waitForMyNode } from './src/store/useDeviceStore';
 import { useCrewStore } from './src/store/useCrewStore';
-import { useMapCalibrationStore } from './src/store/useMapCalibrationStore';
 import { useTagStore } from './src/store/useTagStore';
 import { useScheduleStore } from './src/store/useScheduleStore';
 import { bleService } from './src/services/ble/BleManager';
@@ -50,7 +49,6 @@ export default function App() {
   const loadMessages = useMessagesStore(s => s.loadMessages);
   const loadMyColor = useCrewStore(s => s.loadMyColor);
   const loadCrewMembers = useCrewStore(s => s.loadCrewMembers);
-  const loadAnchors = useMapCalibrationStore(s => s.loadAnchors);
   const loadTags = useTagStore(s => s.loadTags);
   const loadMyGoingPicks = useScheduleStore(s => s.loadMyGoingPicks);
   const unsubRef = useRef<{ packet?: () => void; status?: () => void; notify?: () => void }>({});
@@ -89,7 +87,6 @@ export default function App() {
     loadMessages();
     loadMyColor();
     loadCrewMembers();
-    loadAnchors();
     loadTags();
     loadMyGoingPicks();
     // Phone GPS is foreground-only (battery); a background relaunch skips it

@@ -76,7 +76,10 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   loadMessages: async () => {
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
-      const stored: Message[] = raw ? JSON.parse(raw) : [];
+      // Drop Beacon-era 'calibration' entries older builds persisted; that
+      // type no longer exists and would render as an empty bubble.
+      const stored: Message[] = (raw ? (JSON.parse(raw) as Message[]) : [])
+        .filter(m => (m.type as string) !== 'calibration');
       // Merge rather than replace: when iOS relaunches us in the background
       // for a BLE event, packets can be routed before this read resolves.
       const storedIds = new Set(stored.map(m => m.id));

@@ -2,7 +2,7 @@
 
 Festival crew app for when there is no cell service. Everyone in the crew carries a cheap [Meshtastic](https://meshtastic.org) LoRa radio (a LilyGO T-Echo) paired to their phone over Bluetooth; the radios form a mesh with no towers and no Wi-Fi. RNDVU sits on top of that mesh and answers the questions crews actually have once they get separated: where is everyone, where and when are we meeting, who needs help, and who's going to which set. Started as "Beacon" (hence the repo name); rebranded RNDVU in April 2026.
 
-**Status: working prototype, built for Coachella 2026 Weekend 2.** Real Bluetooth against real radios, a TestFlight build, and 89 passing tests. The git history records a TestFlight build and hardware debugging with testers; it does not record festival-day use, so this README doesn't claim it. See [Status](#status).
+**Status: working prototype, built for Coachella 2026 Weekend 2.** Real Bluetooth against real radios, a TestFlight build, and 91 passing tests. The git history records a TestFlight build and hardware debugging with testers; it does not record festival-day use, so this README doesn't claim it. See [Status](#status).
 
 ```bash
 npm install                # lockfile + .npmrc (legacy-peer-deps)
@@ -29,13 +29,13 @@ With a Meshtastic radio nearby, onboarding scans, pairs, and **reconfigures the 
 RealBleManager ──► MeshtasticCodec ──► PacketRouter ──► MessageService ──► zustand stores ──► screens
 (react-native-    protobuf wire      dedup, route by    parse MF:* text    device, crew,
  ble-plx)         format, hand-      portnum, gate      into typed         messages, schedule,
-   ▲              written            crew membership    messages           tags, mapCalibration
+   ▲              written            crew membership    messages           tags
 MockBleManager ──► MockFirmware (virtual radio; emits real protobuf bytes, decoded by the same codec)
 ```
 
-- **`src/services/ble/`** — `RealBleManager` (549 lines) owns the GATT session; `MeshtasticCodec` (768) encodes and decodes; `PacketRouter` fans each `FromRadio` into the stores. `MockFirmware` + `MockPeers` + `MockScenarios` are the simulator.
+- **`src/services/ble/`** — `RealBleManager` (735 lines) owns the GATT session; `MeshtasticCodec` (768) encodes and decodes; `PacketRouter` fans each `FromRadio` into the stores. `MockFirmware` + `MockPeers` + `MockScenarios` are the simulator.
 - **`src/services/mesh/MessageService.ts`** — the `MF:` protocol (below). **`src/services/map/TilePrefetch.ts`** — offline tiles. **`src/services/festival/FestivalConfig.ts`** — reads `src/config/festivals/coachella-w2-2026.json`.
-- **`src/store/`** — six zustand stores; everything that matters persists to AsyncStorage (messages capped at 500, debounced in the foreground and written immediately in the background; crew aged out after 7 days; picks, tags, colour, display name, last radio).
+- **`src/store/`** — five zustand stores; everything that matters persists to AsyncStorage (messages capped at 500, debounced in the foreground and written immediately in the background; crew aged out after 7 days; picks, tags, colour, display name, last radio).
 - **`src/services/notifications/`** — local notifications (no push server) for texts, rally points, meetups and SOS that arrive while the app is backgrounded; SOS is time-sensitive.
 - **`App.tsx`** — wires BLE listeners once at the root, runs phone GPS in the foreground, and auto-reconnects on launch and foreground. The radio stays connected in the background; a T-Echo accepts one BLE central at a time, so handing it to the Meshtastic app is an explicit **Release Device**.
 
@@ -69,13 +69,12 @@ MockBleManager ──► MockFirmware (virtual radio; emits real protobuf bytes,
 
 ## Status
 
-Verified in this tree: `tsc` clean, `vitest` 89/89. `USE_MOCK = false`, so the checked-in build talks to hardware.
+Verified in this tree: `tsc` clean, `vitest` 91/91. `USE_MOCK = false`, so the checked-in build talks to hardware.
 
 Known gaps, all noted in the code:
 
 - **One shared channel key, compiled in.** `RNDVU_CHANNEL_PSK` is a constant, so every install is one crew. Per-crew keys via invite link ("Model 2") is designed but not built; the tag "community" scope is hard-wired to crew for the same reason.
 - `setLocationSharing` (privacy toggle) is written but marked untested on hardware and not wired to UI.
 - Stage markers on the map are disabled: stage coordinates in the config aren't accurate enough.
-- Temporary `[RNDVU-DIAG]` logging in `PacketRouter` and `MessageItem` is still in, pending confirmation of a fix on device.
-- Leftovers from the Beacon era: `MF:C` map-calibration messages and `useMapCalibrationStore` are parsed and stored but nothing reads them; `lib-2026.json` and the 2.2 MB `lib-2026-map.png` are unreferenced; `date-fns`, `react-native-reanimated`, `expo-secure-store`, `expo-linking`, `expo-font` are installed but unused.
+- `react-native-reanimated` is installed but not used yet (kept for the planned arrow finder). Old builds sending `MF:C` (Beacon-era map calibration) are ignored.
 - The festival is a build-time import. `FestivalConfig.loadConfig` exists for switching at runtime; nothing calls it.

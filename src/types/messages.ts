@@ -1,6 +1,6 @@
-import type { GpsPoint, TagCategory } from './festival';
+import type { TagCategory } from './festival';
 
-export type MessageType = 'text' | 'heading' | 'rally' | 'sos' | 'going' | 'ungoing' | 'calibration' | 'color' | 'tag' | 'meetup';
+export type MessageType = 'text' | 'heading' | 'rally' | 'sos' | 'going' | 'ungoing' | 'color' | 'tag' | 'meetup';
 
 export type SendStatus = 'sending' | 'sent' | 'failed';
 
@@ -54,11 +54,6 @@ export interface UngoingMessage extends BaseMessage {
   artistId: string;
 }
 
-export interface CalibrationMessage extends BaseMessage {
-  type: 'calibration';
-  anchors: { topLeft: GpsPoint; bottomRight: GpsPoint };
-}
-
 export interface ColorMessage extends BaseMessage {
   type: 'color';
   color: string;
@@ -82,4 +77,4 @@ export interface MeetupMessage extends BaseMessage {
   note?: string;
 }
 
-export type Message = TextMessage | HeadingMessage | RallyMessage | SOSMessage | GoingMessage | UngoingMessage | CalibrationMessage | ColorMessage | TagMessage | MeetupMessage;
+export type Message = TextMessage | HeadingMessage | RallyMessage | SOSMessage | GoingMessage | UngoingMessage | ColorMessage | TagMessage | MeetupMessage;
