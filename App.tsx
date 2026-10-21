@@ -21,7 +21,8 @@ import { useFestivalStore } from './src/store/useFestivalStore';
 import { useOfflineMapStore } from './src/store/useOfflineMapStore';
 import { festivalConfig } from './src/services/festival/FestivalConfig';
 import { bleService } from './src/services/ble/BleManager';
-import { RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK } from './src/services/ble/MeshtasticCodec';
+import { RNDVU_CHANNEL_NAME } from './src/services/ble/MeshtasticCodec';
+import { CREW_CHANNEL_PSK } from './src/config/channelKey';
 import { routeFromRadio, onMeshMessage } from './src/services/ble/PacketRouter';
 import {
   configureNotifications,
@@ -161,7 +162,7 @@ export default function App() {
       const savedName = raw ? (JSON.parse(raw) as { longName: string; shortName: string }) : null;
       // Re-provision channel + name in one transaction. It ends in a reboot;
       // the next reconnect finds the flag cleared and skips this path.
-      await bleService.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK, 1, savedName ?? undefined);
+      await bleService.setChannel(0, RNDVU_CHANNEL_NAME, CREW_CHANNEL_PSK, 1, savedName ?? undefined);
       await AsyncStorage.removeItem(NEEDS_REPROVISION_KEY);
     } catch (e) {
       console.warn('reprovision failed (will retry on next reconnect):', e);

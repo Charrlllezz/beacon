@@ -138,7 +138,7 @@ export function regionName(code: number | null | undefined): string {
  * FNV-1a (32-bit) over the PSK bytes → 6 hex chars. NOT reversible — just
  * enough to confirm two devices share the same channel key at a glance.
  */
-function pskFingerprint(psk: Uint8Array): string {
+export function pskFingerprint(psk: Uint8Array): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < psk.length; i++) {
     h ^= psk[i];
