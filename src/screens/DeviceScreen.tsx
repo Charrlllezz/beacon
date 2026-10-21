@@ -8,8 +8,10 @@ import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
 import { useDeviceStore } from '../store/useDeviceStore';
 import { useCrewStore } from '../store/useCrewStore';
 import { bleService } from '../services/ble/BleManager';
-import { regionName, RNDVU_CHANNEL_NAME } from '../services/ble/MeshtasticCodec';
-import { CREW_CHANNEL_PSK, CREW_CHANNEL_KEY_FINGERPRINT, CREW_CHANNEL_KEY_SOURCE } from '../config/channelKey';
+import { regionName } from '../services/ble/MeshtasticCodec';
+import { CREW_CHANNEL_KEY_FINGERPRINT, CREW_CHANNEL_KEY_SOURCE } from '../config/channelKey';
+import { provisionRadio } from '../services/crew/crewActions';
+import { useCrewKeyStore } from '../store/useCrewKeyStore';
 import { timeAgo } from '../utils/time';
 import { isSharingLocation, checkFirmware, FLEET_FIRMWARE } from '../utils/firmware';
 import { useFestivalStore } from '../store/useFestivalStore';
@@ -72,6 +74,8 @@ export default function DeviceScreen() {
   const region = useDeviceStore(s => s.region);
   const keyFingerprint = useDeviceStore(s => s.channelKeyFingerprint);
   const positionPrecision = useDeviceStore(s => s.positionPrecision);
+  const model2 = useCrewKeyStore(s => s.model2);
+  const crew = useCrewKeyStore(s => s.crew);
   const [busy, setBusy] = useState(false);
   const activeFestivalId = useFestivalStore(s => s.activeId);
   const festivalReason = useFestivalStore(s => s.reason);
@@ -195,7 +199,11 @@ export default function DeviceScreen() {
           onPress: async () => {
             try {
               const saved = await useCrewStore.getState().loadDisplayName();
-              await bleService.setChannel(0, RNDVU_CHANNEL_NAME, CREW_CHANNEL_PSK, 1, saved ?? undefined);
+              const result = await provisionRadio(saved ?? undefined);
+              if (result === 'choose') {
+                Alert.alert('Pick a crew first', 'Start a crew or scan an invite on the Crew tab. That sets up your radio too.');
+                return;
+              }
               Alert.alert('Re-provisioning', 'Your radio is rebooting and will reconnect with the RNDVU channel + US region. Watch the Region field above flip to US.');
             } catch (e) {
               console.warn('re-provision failed:', e);
@@ -224,8 +232,12 @@ export default function DeviceScreen() {
   // The radio's channel key differs from the one this build writes: it was
   // paired by a build with another key (e.g. a dev build vs the Countdown
   // build), so it can't read this crew. Re-provision writes this build's key.
-  const keyMismatch = keyFingerprint != null && keyFingerprint !== CREW_CHANNEL_KEY_FINGERPRINT;
-  const keySourceLabel = { build: 'private', default: 'public', invalid: 'public (bad build key)' }[CREW_CHANNEL_KEY_SOURCE];
+  // With per-crew keys (Model 2) the expected key is this phone's crew's.
+  const expectedFp = model2 ? crew?.id ?? null : CREW_CHANNEL_KEY_FINGERPRINT;
+  const keyMismatch = keyFingerprint != null && expectedFp !== null && keyFingerprint !== expectedFp;
+  const keySourceLabel = model2
+    ? (crew ? crew.displayName : 'no crew yet')
+    : { build: 'private', default: 'public', invalid: 'public (bad build key)' }[CREW_CHANNEL_KEY_SOURCE];
 
   return (
     <Modal visible={open} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
@@ -375,6 +387,25 @@ export default function DeviceScreen() {
             </View>
             <View style={styles.kv}><Text style={styles.k}>HW model</Text><Text style={styles.vMono}>{hwModel ?? '—'}</Text></View>
             <View style={styles.kv}><Text style={styles.k}>PKC</Text><Text style={styles.vMono}>{hasPKC == null ? '—' : hasPKC ? 'yes' : 'no'}</Text></View>
+            <TouchableOpacity
+              style={[styles.kv, styles.offlineRow]}
+              onPress={() => {
+                const next = !model2;
+                Alert.alert(
+                  next ? 'Turn on per-crew keys?' : 'Turn off per-crew keys?',
+                  next
+                    ? 'Beta. Your crew gets its own private key: start a crew or scan an invite on the Crew tab. Everyone in the crew needs this on.'
+                    : "Back to this build's shared key. Tap Re-provision afterwards to put it on your radio.",
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: next ? 'Turn on' : 'Turn off', onPress: () => useCrewKeyStore.getState().setModel2(next) },
+                  ],
+                );
+              }}
+            >
+              <Text style={styles.k}>Per-crew keys (beta)</Text>
+              <Text style={[styles.vMono, model2 && { color: Colors.success }]}>{model2 ? 'on' : 'off'}</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </SafeAreaView>

@@ -47,7 +47,15 @@
           "locationAlwaysAndWhenInUsePermission": "RNDVU uses your location to share with your crew."
         }
       ],
-      "expo-file-system"
+      "expo-file-system",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "RNDVU uses the camera to scan your crew's invite QR code.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     "web": {
       "favicon": "./assets/favicon.png"

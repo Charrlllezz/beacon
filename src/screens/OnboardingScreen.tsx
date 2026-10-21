@@ -10,8 +10,10 @@ import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
 import { useDeviceStore, waitForMyNode } from '../store/useDeviceStore';
 import { useCrewStore } from '../store/useCrewStore';
 import { bleService } from '../services/ble/BleManager';
-import { RNDVU_CHANNEL_NAME } from '../services/ble/MeshtasticCodec';
-import { CREW_CHANNEL_PSK } from '../config/channelKey';
+import { provisionRadio, startCrew } from '../services/crew/crewActions';
+import { confirmJoin } from '../services/crew/confirmJoin';
+import { useCrewKeyStore } from '../store/useCrewKeyStore';
+import QrScanner from '../components/crew/QrScanner';
 import { useMessagesStore } from '../store/useMessagesStore';
 import { requestNotificationPermission } from '../services/notifications/LocalNotifications';
 
@@ -19,10 +21,13 @@ interface Props {
   onComplete: () => void;
 }
 
-type Step = 'welcome' | 'name' | 'scanning' | 'select' | 'connecting' | 'done';
+type Step = 'welcome' | 'name' | 'scanning' | 'select' | 'connecting' | 'crew' | 'done';
 
 export default function OnboardingScreen({ onComplete }: Props) {
   const [step, setStep] = useState<Step>('welcome');
+  const [crewName, setCrewName] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const crewKey = useCrewKeyStore(s => s.crew);
   const [displayName, setDisplayName] = useState('');
   const [shortName, setShortName] = useState('');
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -99,13 +104,18 @@ export default function OnboardingScreen({ onComplete }: Props) {
           owner = { longName: long, shortName: short };
         }
 
-        // Provision region, the shared RNDVU channel and the name in one
+        // Provision region, the RNDVU channel and the name in one
         // transaction. The commit drops Bluetooth and the radio reboots ~7s
         // later; auto-reconnect in RealBleManager handles the restore, so we
         // don't wait for it here. ConnectionBar shows 'reconnecting' briefly
-        // after the user lands on the main app.
+        // after the user lands on the main app. With per-crew keys and no
+        // crew yet (and a radio that didn't come pre-keyed), ask first.
         try {
-          await bleService.setChannel(0, RNDVU_CHANNEL_NAME, CREW_CHANNEL_PSK, 1, owner);
+          const result = await provisionRadio(owner);
+          if (result === 'choose') {
+            setStep('crew');
+            return;
+          }
         } catch (e) {
           console.warn('setChannel on onboarding failed:', e);
           // Don't silently proceed with a half-provisioned radio. Flag it so the
@@ -119,17 +129,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
         }
       }
 
-      // Persist onboarding-complete flag so cold relaunches skip onboarding
-      try {
-        await AsyncStorage.setItem('rndvu_onboarding_complete', 'true');
-      } catch {}
-
-      // Bluetooth is granted and the radio is linked; now ask for
-      // notifications, so a locked phone surfaces crew messages and SOS.
-      // Declining is fine: the app works, it just stays quiet in a pocket.
-      await requestNotificationPermission();
-
-      setStep('done');
+      await finishOnboarding();
     } catch (e: any) {
       console.warn('Connection failed:', e);
       setStatus('disconnected');
@@ -137,6 +137,34 @@ export default function OnboardingScreen({ onComplete }: Props) {
       const { title, body } = classifyConnectError(e);
       Alert.alert(title, body);
     }
+  }
+
+  async function finishOnboarding() {
+    // Persist onboarding-complete flag so cold relaunches skip onboarding
+    try {
+      await AsyncStorage.setItem('rndvu_onboarding_complete', 'true');
+    } catch {}
+
+    // Bluetooth is granted and the radio is linked; now ask for
+    // notifications, so a locked phone surfaces crew messages and SOS.
+    // Declining is fine: the app works, it just stays quiet in a pocket.
+    await requestNotificationPermission();
+
+    setStep('done');
+  }
+
+  // Per-crew keys: start a crew or join one, then the radio gets its key.
+  async function handleStartCrew() {
+    setStep('connecting');
+    await startCrew(crewName.trim() || undefined);
+    await finishOnboarding();
+  }
+
+  async function handleScanned(text: string) {
+    setScanning(false);
+    // Let the scanner close before the confirm alert shows.
+    await new Promise(r => setTimeout(r, 400));
+    if (await confirmJoin(text)) await finishOnboarding();
   }
 
   // Map common BLE error shapes to actionable messages. T-Echo holds only
@@ -292,6 +320,37 @@ export default function OnboardingScreen({ onComplete }: Props) {
           </View>
         )}
 
+        {step === 'crew' && (
+          <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <ScrollView contentContainerStyle={styles.centered} keyboardShouldPersistTaps="handled">
+              <Text style={styles.appName}>Your crew</Text>
+              <Text style={styles.tagline}>
+                Your crew shares a private key. Only people in it can read your messages or see you on the map.
+              </Text>
+              <TouchableOpacity style={styles.primaryButton} onPress={() => setScanning(true)}>
+                <Text style={styles.primaryButtonText}>Join with a QR</Text>
+              </TouchableOpacity>
+              <Text style={[styles.hintText, { marginBottom: Spacing.lg }]}>Someone in your crew shows it from Crew → Invite</Text>
+              <TextInput
+                style={styles.nameInput}
+                placeholder="Crew name (optional)"
+                placeholderTextColor={Colors.textMuted}
+                value={crewName}
+                onChangeText={setCrewName}
+                maxLength={30}
+                keyboardAppearance="dark"
+              />
+              <TouchableOpacity style={styles.secondaryButton} onPress={handleStartCrew}>
+                <Text style={styles.secondaryButtonText}>Start a new crew</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={finishOnboarding} style={{ marginTop: Spacing.lg }}>
+                <Text style={styles.hintText}>Skip for now (set it up on the Crew tab)</Text>
+              </TouchableOpacity>
+            </ScrollView>
+            <QrScanner visible={scanning} onCancel={() => setScanning(false)} onScanned={handleScanned} />
+          </KeyboardAvoidingView>
+        )}
+
         {step === 'done' && (
           <View style={styles.centered}>
             <View style={[styles.logoCircle, { backgroundColor: Colors.success + '22', borderColor: Colors.success + '55' }]}>
@@ -299,6 +358,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
             </View>
             <Text style={styles.appName}>You're In!</Text>
             <Text style={styles.tagline}>
+              {crewKey ? `In ${crewKey.displayName}\n` : ''}
               {crewCount > 0
                 ? `${crewCount} crew member${crewCount !== 1 ? 's' : ''} online`
                 : 'Connected to the mesh'}
