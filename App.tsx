@@ -28,7 +28,11 @@ import {
   configureNotifications,
   notifyForMessage,
   requestNotificationPermission,
+  scheduleMeetupReminder,
+  cancelMeetupReminder,
 } from './src/services/notifications/LocalNotifications';
+import { reminderActions } from './src/services/notifications/meetupReminderSync';
+import { getLocationLabel } from './src/components/chat/MeetupCard';
 
 const DISPLAY_NAME_KEY = 'rndvu_display_name';
 const ONBOARDING_COMPLETE_KEY = 'rndvu_onboarding_complete';
@@ -90,7 +94,18 @@ export default function App() {
     // The policy (NotificationPolicy) decides; foreground arrivals stay silent.
     configureNotifications();
     unsubRef.current.notify = onMeshMessage((message) => {
-      notifyForMessage(message, useDeviceStore.getState().myNodeNum);
+      const replyTarget = message.replyTo
+        ? useMessagesStore.getState().messages.find(m => m.packetId === message.replyTo)
+        : undefined;
+      notifyForMessage(message, useDeviceStore.getState().myNodeNum, replyTarget);
+    });
+    // Meetup reminders follow the message list: new meetups (sent, received,
+    // or loaded at launch) get one; my "Can't make it" drops it.
+    const unsubReminders = useMessagesStore.subscribe((state, prev) => {
+      if (state.messages === prev.messages) return;
+      const { schedule, cancel } = reminderActions(prev.messages, state.messages, useDeviceStore.getState().myNodeNum);
+      for (const meetup of schedule) scheduleMeetupReminder(meetup, getLocationLabel(meetup.location));
+      for (const id of cancel) cancelMeetupReminder(id);
     });
 
     // We may be starting in the background (iOS relaunching us for a BLE
@@ -123,6 +138,7 @@ export default function App() {
       unsubRef.current.packet?.();
       unsubRef.current.status?.();
       unsubRef.current.notify?.();
+      unsubReminders();
       unsubFirstFix();
       stopPhoneGps();
     };

@@ -157,6 +157,11 @@ function routePacket(packet: MeshPacket, myNodeNum: number | null): void {
       // quietly so an old build on the channel doesn't put raw MF:C text in chat.
       if (text.startsWith('MF:C:')) break;
       const message = parseMessage(text, packet.from, fromName, timestamp, packet.channel);
+      if (packet.id) message.packetId = packet.id;
+      if (packet.decoded?.replyId) message.replyTo = packet.decoded.replyId;
+
+      // A reply that doesn't say what it answers is meaningless.
+      if (message.type === 'reply' && !message.replyTo) break;
 
       if (message.type === 'color') {
         useCrewStore.getState().updateColor(packet.from, message.color);

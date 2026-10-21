@@ -87,6 +87,24 @@ describe('PacketRouter onMeshMessage', () => {
     expect(m.locationAt).toBe(now - 120);
   });
 
+  test('replies keep their packet id and reply_id; a reply with no target is dropped', () => {
+    const seen: Message[] = [];
+    const off = onMeshMessage(m => seen.push(m));
+    const reply = (replyId?: number): FromRadio => ({
+      packet: {
+        from: PEER, to: 0xffffffff, channel: 0, id: nextId++, rxTime: Math.floor(Date.now() / 1000),
+        decoded: { portnum: PortNum.TEXT_MESSAGE_APP, payload: new TextEncoder().encode('MF:Y:omw'), replyId },
+      },
+    } as FromRadio);
+
+    const withTarget = reply(0x4242);
+    routeFromRadio(withTarget, ME);
+    routeFromRadio(reply(undefined), ME);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ type: 'reply', kind: 'omw', replyTo: 0x4242, packetId: withTarget.packet!.id });
+    off();
+  });
+
   test('a throwing listener does not break routing', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const off1 = onMeshMessage(() => { throw new Error('boom'); });

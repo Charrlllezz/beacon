@@ -7,7 +7,7 @@ import {
   TO_RADIO_UUID,
   FROM_NUM_UUID,
 } from './ConnectionState';
-import { decodeFromRadio, encodeToRadio, encodeWantConfig, encodeSetChannel, encodeBeginEditSettings, encodeCommitEditSettings, encodeDisableChannel, encodeSetLoraConfig, encodeHeartbeat, encodeSetOwner, encodeFactoryReset, encodeSetPositionConfig, encodeSetTelemetryConfig } from './MeshtasticCodec';
+import { decodeFromRadio, encodeToRadio, newPacketId,encodeWantConfig, encodeSetChannel, encodeBeginEditSettings, encodeCommitEditSettings, encodeDisableChannel, encodeSetLoraConfig, encodeHeartbeat, encodeSetOwner, encodeFactoryReset, encodeSetPositionConfig, encodeSetTelemetryConfig } from './MeshtasticCodec';
 import { useDeviceStore } from '../../store/useDeviceStore';
 
 export type PacketCallback = (fromRadio: FromRadio) => void;
@@ -406,11 +406,17 @@ export class RealBleManager {
     await this.writeAdmin(encodeCommitEditSettings(myNodeNum));
   }
 
-  async sendText(text: string, channelIndex = 0): Promise<void> {
+  /**
+   * Broadcast a text on the crew channel. Returns the packet id (chosen here,
+   * so replies to this message can point at it), or pass replyId to answer
+   * another message.
+   */
+  async sendText(text: string, channelIndex = 0, opts: { replyId?: number } = {}): Promise<number> {
     if (!this.device || !this.isConnected) throw new Error('Not connected');
 
     const myNodeNum = useDeviceStore.getState().myNodeNum ?? 0;
-    const toRadioBytes = encodeToRadio(0xffffffff, text, myNodeNum, channelIndex);
+    const id = newPacketId();
+    const toRadioBytes = encodeToRadio(0xffffffff, text, myNodeNum, channelIndex, { id, replyId: opts.replyId });
     const base64 = this.uint8ToBase64(toRadioBytes);
 
     await this.device.writeCharacteristicWithResponseForService(
@@ -418,6 +424,7 @@ export class RealBleManager {
       TO_RADIO_UUID,
       base64,
     );
+    return id;
   }
 
   /**

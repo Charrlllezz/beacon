@@ -4,29 +4,20 @@ import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
 import type { MeetupMessage } from '../../types/messages';
 import { festivalConfig } from '../../services/festival/FestivalConfig';
 import { timeAgo } from '../../utils/time';
+import { getMeetupDate } from '../../utils/meetupTime';
+import ReplyBar from './ReplyBar';
 
 interface Props {
   message: MeetupMessage;
   isMine: boolean;
 }
 
-function getLocationLabel(location: string): string {
+export function getLocationLabel(location: string): string {
   const stage = festivalConfig.getStage(location);
   if (stage) return stage.name;
   // Capitalize first letter for custom locations
   if (location && location !== 'Dropped Pin') return location;
   return location;
-}
-
-function getMeetupDate(hour: number, minute: number, sentAtMs: number): Date {
-  // Anchor to the day the meetup was SENT, not the viewer's current day.
-  // Anchoring to "now" made a meetup viewed even a minute after its time roll
-  // forward a full day ("in 23h" instead of "happening now"). Only roll to the
-  // next day if the chosen time is genuinely earlier than when it was sent.
-  const target = new Date(sentAtMs);
-  target.setHours(hour, minute, 0, 0);
-  if (target.getTime() < sentAtMs) target.setDate(target.getDate() + 1);
-  return target;
 }
 
 function formatCountdown(ms: number): string {
@@ -81,6 +72,7 @@ export default function MeetupCard({ message, isMine }: Props) {
         {message.note && (
           <Text style={styles.note}>{message.note}</Text>
         )}
+        <ReplyBar message={message} isMine={isMine} options={isPast ? [] : ['omw', 'cant']} />
         <Text style={styles.timestamp}>{timeAgo(message.timestamp / 1000)}</Text>
       </View>
     </View>

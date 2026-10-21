@@ -2,6 +2,7 @@ import type { FromRadio } from '../../types/mesh';
 import {
   decodeFromRadio,
   encodeToRadio,
+  newPacketId,
   encodeSetOwner,
   encodeSetChannel,
   encodeBeginEditSettings,
@@ -102,11 +103,13 @@ export class MockBleManager {
     }
   }
 
-  async sendText(text: string, channelIndex = 0): Promise<void> {
+  async sendText(text: string, channelIndex = 0, opts: { replyId?: number } = {}): Promise<number> {
     if (!this.isConnected) throw new Error('Not connected');
     await delay(50); // simulate BLE write latency
-    const bytes = encodeToRadio(0xffffffff, text, this.firmware.myNodeNum, channelIndex);
+    const id = newPacketId();
+    const bytes = encodeToRadio(0xffffffff, text, this.firmware.myNodeNum, channelIndex, { id, replyId: opts.replyId });
     this.firmware.handleToRadio(bytes);
+    return id;
   }
 
   async setOwner(longName: string, shortName: string): Promise<void> {

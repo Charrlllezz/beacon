@@ -20,7 +20,8 @@ export interface LocalNotice {
  */
 export function noticeForMessage(
   message: Message,
-  opts: { appActive: boolean; myNodeNum: number | null },
+  // replyTarget: for a reply, the message it answers (if this phone has it).
+  opts: { appActive: boolean; myNodeNum: number | null; replyTarget?: Message },
 ): LocalNotice | null {
   if (opts.appActive) return null;
   if (opts.myNodeNum !== null && message.fromNodeId === opts.myNodeNum) return null;
@@ -49,6 +50,19 @@ export function noticeForMessage(
         body: `${who} needs help. Open RNDVU to see where they are.`,
         timeSensitive: true,
       };
+    case 'reply': {
+      // Only answers to something I sent: the rest of the crew doesn't need
+      // a buzz for every "on my way".
+      const target = opts.replyTarget;
+      if (!target || opts.myNodeNum === null || target.fromNodeId !== opts.myNodeNum) return null;
+      if (message.kind === 'coming') {
+        return { title: `${who} is coming`, body: `${who} saw your SOS and is on the way.`, timeSensitive: true };
+      }
+      const what = target.type === 'meetup' ? 'your meetup' : 'your rally point';
+      return message.kind === 'omw'
+        ? { title: `${who} is on the way`, body: `Answered ${what}.`, timeSensitive: false }
+        : { title: `${who} can't make it`, body: `Answered ${what}.`, timeSensitive: false };
+    }
     default:
       return null;
   }

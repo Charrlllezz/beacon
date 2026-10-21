@@ -226,6 +226,28 @@ describe(`RNDVU against meshtasticd ${FLEET_FIRMWARE} (sim)`, () => {
     );
   });
 
+  test("an answer to c's meetup points at it on c's radio (phone-chosen id, reply_id)", async () => {
+    // Replies match on packet ids, so both must survive real firmware: the id
+    // the sending phone picks, and Data.reply_id on the answer.
+    const a = mesh.nodeNum('a');
+    const c = mesh.nodeNum('c');
+    const meetupId = 0x5eed0001;
+    mesh.writeFromPhone('c', encodeToRadio(BROADCAST, 'MF:M:23:30|Main gate|', c, 0, { id: meetupId }));
+    await mesh.waitFor(
+      () => useMessagesStore.getState().messages.some(m => m.type === 'meetup' && m.packetId === meetupId),
+      60000,
+      'meetup in the app with its packet id',
+    );
+
+    const replyPacketId = await mgr.sendText('MF:Y:omw', 0, { replyId: meetupId });
+    const replyAtC = () => mesh.node('c').log
+      .map(e => e.msg.packet)
+      .find(p => p?.from === a && p.decoded?.replyId === meetupId);
+    await mesh.waitFor(() => replyAtC() !== undefined, 60000, 'reply at c');
+    expect(replyAtC()!.id).toBe(replyPacketId);
+    expect(decodeTextMessage(replyAtC()!.decoded!.payload)).toBe('MF:Y:omw');
+  });
+
   test('a position shared from the app reaches the crew at full precision', async () => {
     const a = mesh.nodeNum('a');
     // NOS Events Center, centre of the grounds.

@@ -1,6 +1,6 @@
 import type { TagCategory } from './festival';
 
-export type MessageType = 'text' | 'heading' | 'rally' | 'sos' | 'going' | 'ungoing' | 'color' | 'tag' | 'meetup';
+export type MessageType = 'text' | 'heading' | 'rally' | 'sos' | 'going' | 'ungoing' | 'color' | 'tag' | 'meetup' | 'reply';
 
 export type SendStatus = 'sending' | 'sent' | 'failed';
 
@@ -14,6 +14,11 @@ export interface BaseMessage {
   // BLE write result. 'sent' doesn't confirm LoRa delivery (broadcasts are
   // fire-and-forget), just that the outbound write succeeded.
   sendStatus?: SendStatus;
+  // Meshtastic packet id. Same on every phone (the sender picks it), so it's
+  // what replies point at. Missing on messages stored before replies existed.
+  packetId?: number;
+  // Data.reply_id: the packetId of the message this one answers.
+  replyTo?: number;
 }
 
 export interface TextMessage extends BaseMessage {
@@ -77,4 +82,15 @@ export interface MeetupMessage extends BaseMessage {
   note?: string;
 }
 
-export type Message = TextMessage | HeadingMessage | RallyMessage | SOSMessage | GoingMessage | UngoingMessage | ColorMessage | TagMessage | MeetupMessage;
+// One-tap answers. omw / cant answer a rally or meetup; coming answers an SOS.
+export type ReplyKind = 'omw' | 'cant' | 'coming';
+export const REPLY_KINDS: readonly ReplyKind[] = ['omw', 'cant', 'coming'];
+
+// MF:Y:<kind>, with replyTo set from the packet's reply_id. Never a chat
+// bubble: shown on the card it answers.
+export interface ReplyMessage extends BaseMessage {
+  type: 'reply';
+  kind: ReplyKind;
+}
+
+export type Message = TextMessage | HeadingMessage | RallyMessage | SOSMessage | GoingMessage | UngoingMessage | ColorMessage | TagMessage | MeetupMessage | ReplyMessage;

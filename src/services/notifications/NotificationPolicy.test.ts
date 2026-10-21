@@ -35,6 +35,23 @@ describe('noticeForMessage', () => {
       .toBe('12:05 AM at Gate');
   });
 
+  test('a reply notifies only the person whose message it answers', () => {
+    const mine: Message = { ...base, id: 'mine', fromNodeId: ME, fromName: 'Me', type: 'meetup', hour: 23, minute: 0, location: 'Gate', packetId: 42 };
+    const theirs: Message = { ...mine, fromNodeId: 0x999 };
+    const omw: Message = { ...base, type: 'reply', kind: 'omw', replyTo: 42 };
+    expect(noticeForMessage(omw, { ...away, replyTarget: mine }))
+      .toEqual({ title: 'Maya is on the way', body: 'Answered your meetup.', timeSensitive: false });
+    expect(noticeForMessage(omw, { ...away, replyTarget: theirs })).toBeNull();
+    expect(noticeForMessage(omw, away)).toBeNull(); // original not on this phone
+  });
+
+  test("I'm coming (an SOS answer) is time-sensitive", () => {
+    const sos: Message = { ...base, id: 'sos', fromNodeId: ME, type: 'sos', lat: 1, lng: 2, packetId: 7 };
+    const coming: Message = { ...base, type: 'reply', kind: 'coming', replyTo: 7 };
+    expect(noticeForMessage(coming, { ...away, replyTarget: sos }))
+      .toEqual({ title: 'Maya is coming', body: 'Maya saw your SOS and is on the way.', timeSensitive: true });
+  });
+
   test('silent while the app is in the foreground', () => {
     expect(noticeForMessage({ ...base, type: 'sos', lat: 1, lng: 2 }, { appActive: true, myNodeNum: ME })).toBeNull();
   });

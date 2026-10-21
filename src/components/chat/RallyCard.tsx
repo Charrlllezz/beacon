@@ -6,6 +6,9 @@ import { timeAgo } from '../../utils/time';
 import { haversineDistance, formatDistance } from '../../utils/coordinates';
 import { useCrewStore } from '../../store/useCrewStore';
 import { festivalConfig } from '../../services/festival/FestivalConfig';
+import ReplyBar from './ReplyBar';
+
+const RALLY_ANSWERABLE_MS = 3 * 3600 * 1000;
 
 interface Props {
   message: RallyMessage;
@@ -51,6 +54,8 @@ export default function RallyCard({ message, isMine }: Props) {
           </View>
           <Text style={styles.showMap}>Open Map →</Text>
         </TouchableOpacity>
+        {/* A rally point from hours ago isn't one to answer any more. */}
+        <ReplyBar message={message} isMine={isMine} options={Date.now() - message.timestamp < RALLY_ANSWERABLE_MS ? ['omw', 'cant'] : []} />
         <Text style={styles.time}>{timeAgo(message.timestamp / 1000)}</Text>
       </View>
     </View>

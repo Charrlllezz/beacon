@@ -36,6 +36,9 @@ interface MessagesState {
 
   addMessage: (message: Message) => void;
   setSendStatus: (messageId: string, status: SendStatus) => void;
+  // A self-sent message reached the radio: 'sent', plus the packet id other
+  // phones see, so their replies can be matched to it.
+  markSent: (messageId: string, packetId: number) => void;
   loadMessages: () => Promise<void>;
   clearMessages: () => void;
 }
@@ -69,6 +72,20 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
         return m;
       });
       if (changed && state.isLoaded) debouncedPersist(messages);
+      return { messages };
+    });
+  },
+
+  markSent: (messageId, packetId) => {
+    set((state) => {
+      let changed = false;
+      const messages = state.messages.map(m => {
+        if (m.id !== messageId) return m;
+        changed = true;
+        return { ...m, sendStatus: 'sent' as SendStatus, packetId };
+      });
+      if (!changed) return state;
+      if (state.isLoaded) debouncedPersist(messages);
       return { messages };
     });
   },
