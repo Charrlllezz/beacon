@@ -16,6 +16,8 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm test
+      - name: Flash tool tests
+        run: python3 -m unittest discover -s tools/flash-fleet -v
 
   firmware-sim:
     # The app's BLE/codec/router code against real meshtasticd (fleet version).
