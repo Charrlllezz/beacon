@@ -159,6 +159,7 @@ All four have to work with:
 goes into the next build.
 - Age labels and fading on crew pins.
 - The "RNDVU is not 911" line, plus the phone-dead tip on the card.
+- The one-off Countdown channel key (Model 2 doc, decision 5).
 
 **Beyond Wonderland (shipped, nobody to call):**
 - Crew status strip.
@@ -188,18 +189,20 @@ goes into the next build.
 | Battery | 30 min (#14) | Same |
 | Names (NodeInfo) | Firmware default | Same |
 | Chat, status, rally | As used | Plus small replies ("On my way", "I'm coming") |
-| SOS | One message | Repeats every few minutes while active, with a cap |
+| SOS | One message | Repeats every 2 min while active, no cap (sender cancels) |
 
 At 240 radios on one frequency, the capacity study should confirm this fits, or
 set the intervals to use.
 
-## Questions for you
+## Decisions (Oct 20, 2026)
 
-1. Is the **crew status strip** on every tab right, or should Crew be the first
-   tab instead of Chat?
-2. **SOS that stays active:** how often should it repeat, and does it ever stop
-   on its own?
-3. Do you want **"On my way"** replies, or are they noise?
-4. For **Countdown**, should the pin-age labels go in before the freeze? They
-   are small, and stale pins are the most likely confusion at night.
-5. Should the **end-trip debrief** live in the app, or is a form link fine?
+1. **Crew glance: both.** The status strip goes on every tab, and Crew becomes
+   the first tab.
+2. **SOS repeats every 2 minutes and never stops on its own.** Only the sender
+   cancels it.
+   - This is the heaviest airtime item, so the capacity study must check it.
+   - The banner should make cancelling obvious, so a forgotten SOS doesn't run
+     all night.
+3. **"On my way" / "Can't make it" replies: yes.**
+4. **Pin-age labels go into the Countdown build**, before the freeze.
+5. **The end-trip debrief lives in the app.**

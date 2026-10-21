@@ -147,9 +147,8 @@ Community tags (channel 1) were never set up. Options:
 - Model 2 ships behind a flag on TestFlight (plan week 7). **Countdown runs on
   Model 1.**
 - **Countdown privacy:** the Model 1 key is public, so a stranger with
-  Meshtastic and the GitHub repo could read the crew's chat. That's low risk
-  for one night, but say so on the card ("don't send anything private"), or
-  generate a one-off key just for Countdown's radios.
+  Meshtastic and the GitHub repo could read the crew's chat. Countdown
+  therefore uses a one-off key from the build (decision 5).
 - When Model 2 is on, a radio still on the Model 1 key is treated as having no
   crew: the user creates a crew or joins one. Remove `RNDVU_CHANNEL_PSK` once
   no supported build depends on it.
@@ -196,16 +195,22 @@ Community tags (channel 1) were never set up. Options:
 | `flash_fleet.py --crew`: generate the order key and provision the pack over serial | M |
 | Feature flag, migration, tests (unit, sim, hardware checklist) | M |
 
-## Decisions for you
+## Decisions (Oct 20, 2026)
 
-1. **One shared frequency for all RNDVU crews** (channel name always `RNDVU`).
-   Recommended: crews relay for each other.
-2. **Shipped packs pre-keyed at flashing time**, so pairing needs no input.
-   Recommended.
-3. **QR first, link later.** A link needs a domain you own for RNDVU. Do you
-   have one?
-4. **Community tags:** leave out for now (recommended), or a public channel 1?
-5. **Countdown:** run on the public Model 1 key with a "nothing private" note,
-   or give Countdown's radios a one-off key?
-6. **A Meshtastic-app QR for official-app users:** include it (it's cheap) or
-   skip it?
+1. **One shared frequency for all RNDVU crews.** Accepted: the channel name is
+   always `RNDVU`.
+2. **Shipped packs are pre-keyed at flashing time.** Accepted.
+3. **QR first.** Accepted. The domain is being registered this week; links and
+   the apple-app-site-association file follow once it exists.
+4. **Community tags are left out of Model 2.** Accepted.
+5. **Countdown gets a one-off key**, delivered as an EAS secret
+   (`EXPO_PUBLIC_RNDVU_CHANNEL_PSK`, 32 bytes as base64) and baked into the
+   Countdown build. It is never committed.
+   - A build without the secret falls back to the Model 1 key, so dev builds
+     keep working.
+   - Radios paired by the Countdown build won't talk to dev-build radios.
+   - The secret is generated with a command run on Charles's machine, so the
+     key never appears in a chat transcript.
+   - The key is still extractable from the app bundle by someone who has the
+     build. That's acceptable for a TestFlight-only crew of 6.
+6. **A Meshtastic-app QR.** Included.
