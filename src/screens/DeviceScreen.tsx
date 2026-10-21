@@ -193,11 +193,7 @@ export default function DeviceScreen() {
           onPress: async () => {
             try {
               const saved = await useCrewStore.getState().loadDisplayName();
-              if (saved) {
-                try { await bleService.setOwner(saved.longName, saved.shortName); }
-                catch (e) { console.warn('setOwner during re-provision failed:', e); }
-              }
-              await bleService.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK, 1);
+              await bleService.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK, 1, saved ?? undefined);
               Alert.alert('Re-provisioning', 'Your radio is rebooting and will reconnect with the RNDVU channel + US region. Watch the Region field above flip to US.');
             } catch (e) {
               console.warn('re-provision failed:', e);

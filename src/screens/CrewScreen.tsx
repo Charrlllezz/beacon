@@ -188,6 +188,8 @@ export default function CrewScreen() {
                     useCrewStore.getState().setDisplayName(long, short);
                     try {
                       await bleService.setOwner(long, short);
+                      // Firmware reboots the radio to save a new name.
+                      Alert.alert('Name saved', 'Your radio restarts to apply it and reconnects in about 15 seconds.');
                     } catch (e: any) {
                       console.warn('setOwner failed:', e);
                       Alert.alert(

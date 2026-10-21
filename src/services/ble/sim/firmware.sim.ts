@@ -76,10 +76,10 @@ async function rebootingStep(id: string, step: () => Promise<void>): Promise<num
   return mark;
 }
 
-/** The app's pairing step; the radio reboots at the end of it. */
-async function provision(id: string): Promise<number> {
+/** The app's pairing step (one transaction); the radio reboots once at the end. */
+async function provision(id: string, longName: string, shortName: string): Promise<number> {
   await connectApp(id);
-  return rebootingStep(id, () => mgr.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK));
+  return rebootingStep(id, () => mgr.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK, 1, { longName, shortName }));
 }
 
 function textsFrom(id: string, from: number): string[] {
@@ -139,9 +139,17 @@ describe(`RNDVU against meshtasticd ${FLEET_FIRMWARE} (sim)`, () => {
     mgr.disconnect();
   });
 
-  test('pairing sets region US, the RNDVU channel with exact position precision, and disables channels 1-7', async () => {
-    const mark = await provision('a');
+  test('pairing sets region US, the RNDVU channel with exact position precision, the name, and disables channels 1-7, with one reboot', async () => {
+    const mark = await provision('a', 'Ash', 'ASH');
     const drain = since(mark);
+
+    const self = drain.find(p => p.nodeInfo?.num === mesh.nodeNum('a'))?.nodeInfo;
+    expect(self?.user?.longName).toBe('Ash');
+    expect(self?.user?.shortName).toBe('ASH');
+    // No second reboot follows (a lone set_owner would cause one).
+    const settled = statuses.length;
+    await new Promise(r => setTimeout(r, 15_000));
+    expect(statuses.slice(settled)).not.toContain('reconnecting');
 
     expect(drain.find(p => p.config?.lora)?.config?.lora?.region).toBe(1);
     const channels = drain.map(p => p.channel).filter(c => c !== undefined);
@@ -157,17 +165,20 @@ describe(`RNDVU against meshtasticd ${FLEET_FIRMWARE} (sim)`, () => {
     mgr.disconnect();
   });
 
-  test('provision b and c, set names (setting a name reboots the radio)', async () => {
-    // Firmware 2.7.26 reboots after set_owner outside an edit transaction
-    // (AdminModule::saveChanges), so pairing is two reboots, and anything sent
-    // in the few seconds after naming is lost.
-    for (const [id, long, short] of [['b', 'Bea', 'BEA'], ['c', 'Cal', 'CAL']] as const) {
-      await provision(id);
-      await rebootingStep(id, () => mgr.setOwner(long, short));
-      mgr.disconnect();
-    }
+  test('provision b and c', async () => {
+    await provision('b', 'Bea', 'BEA');
+    mgr.disconnect();
+    await provision('c', 'Cal', 'CAL');
+    mgr.disconnect();
     await connectApp('a');
-    await rebootingStep('a', () => mgr.setOwner('Ash', 'ASH'));
+  });
+
+  test('renaming later reboots the radio once and the app reconnects', async () => {
+    // Firmware reboots after a set_owner outside an edit transaction
+    // (AdminModule::saveChanges); the rename screen warns about it.
+    const mark = await rebootingStep('a', () => mgr.setOwner('Ashley', 'ASH'));
+    const self = since(mark).find(p => p.nodeInfo?.num === mesh.nodeNum('a'))?.nodeInfo;
+    expect(self?.user?.longName).toBe('Ashley');
   });
 
   test('a text from the app reaches b directly and c over two hops', async () => {

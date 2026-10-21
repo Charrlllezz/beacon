@@ -246,6 +246,32 @@ describe('RealBleManager (fake ble-plx over MockFirmware)', () => {
     expect(w.firmware.loraConfig.region).toBe(1);
   });
 
+  test('pairing is one transaction: name included, commit last, one reboot, then reconnects', async () => {
+    w.firmware.primaryChannel = { index: 0, name: '', role: 0 };
+    w.firmware.loraConfig = { region: 0, txEnabled: false, usePreset: false };
+    await connectAndSettle({ autoRetry: true });
+    useDeviceStore.getState().setMyNodeInfo({ myNodeNum: w.firmware.myNodeNum } as any);
+
+    // Like a T-Echo, the mock drops Bluetooth the moment it handles a commit,
+    // so a sequence with any write after a commit rejects here.
+    const p = mgr.setChannel(0, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK, 1, { longName: 'Ash', shortName: 'ASH' });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await p;
+    expect(w.firmware.editOpen).toBe(false);
+    expect(w.bluetoothOff).toBe(true);
+    expect(statuses.at(-1)).not.toBe('connected');
+
+    await vi.advanceTimersByTimeAsync(10_000); // firmware reboots 7 s after the commit
+    expect(w.firmware.rebootCount).toBe(1);
+    expect(statuses.at(-1)).toBe('connected');
+    expect(w.firmware.loraConfig.region).toBe(1);
+    expect(w.firmware.primaryChannel).toMatchObject({ name: RNDVU_CHANNEL_NAME, role: 1, positionPrecision: 32 });
+    expect(w.firmware.owner).toMatchObject({ longName: 'Ash', shortName: 'ASH' });
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(w.firmware.rebootCount).toBe(1); // no second reboot for the name
+  });
+
   test('without autoRetry (onboarding), a failed connect stays failed', async () => {
     w.inRange = false;
     const p = mgr.connect(w.deviceId).catch(() => 'failed');
