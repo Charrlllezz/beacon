@@ -27,7 +27,19 @@ export default function TabNavigator() {
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
       }}
+      // Crew opens first: "where is everyone?" is the question at a festival.
+      initialRouteName="Crew"
     >
+      <Tab.Screen
+        name="Crew"
+        component={CrewScreen}
+        options={{
+          tabBarAccessibilityLabel: 'Crew',
+          tabBarIcon: ({ focused }) => (
+            <Text style={{ fontSize: focused ? 24 : 21, opacity: focused ? 1 : 0.45 }}>👥</Text>
+          ),
+        }}
+      />
       <Tab.Screen
         name="Chat"
         component={ChatScreen}
@@ -55,16 +67,6 @@ export default function TabNavigator() {
           tabBarAccessibilityLabel: 'Lineup',
           tabBarIcon: ({ focused }) => (
             <Text style={{ fontSize: focused ? 24 : 21, opacity: focused ? 1 : 0.45 }}>🎵</Text>
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Crew"
-        component={CrewScreen}
-        options={{
-          tabBarAccessibilityLabel: 'Crew',
-          tabBarIcon: ({ focused }) => (
-            <Text style={{ fontSize: focused ? 24 : 21, opacity: focused ? 1 : 0.45 }}>👥</Text>
           ),
         }}
       />
