@@ -3,7 +3,7 @@ import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { StyleSheet, AppState } from 'react-native';
+import { StyleSheet, AppState, Alert, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 
@@ -23,8 +23,8 @@ import { useOfflineMapStore } from './src/store/useOfflineMapStore';
 import { useCrewKeyStore } from './src/store/useCrewKeyStore';
 import { festivalConfig } from './src/services/festival/FestivalConfig';
 import { bleService } from './src/services/ble/BleManager';
-import { RNDVU_CHANNEL_NAME } from './src/services/ble/MeshtasticCodec';
-import { CREW_CHANNEL_PSK } from './src/config/channelKey';
+import { provisionRadio } from './src/services/crew/crewActions';
+import { confirmJoin } from './src/services/crew/confirmJoin';
 import { routeFromRadio, onMeshMessage } from './src/services/ble/PacketRouter';
 import {
   configureNotifications,
@@ -189,9 +189,11 @@ export default function App() {
       const raw = await AsyncStorage.getItem(DISPLAY_NAME_KEY);
       const savedName = raw ? (JSON.parse(raw) as { longName: string; shortName: string }) : null;
       // Re-provision channel + name in one transaction. It ends in a reboot;
-      // the next reconnect finds the flag cleared and skips this path.
-      await bleService.setChannel(0, RNDVU_CHANNEL_NAME, CREW_CHANNEL_PSK, 1, savedName ?? undefined);
-      await AsyncStorage.removeItem(NEEDS_REPROVISION_KEY);
+      // the next reconnect finds the flag cleared and skips this path. With
+      // Model 2 and no crew yet there's nothing to write until the user
+      // starts or joins one (which writes it then), so the flag stays.
+      const result = await provisionRadio(savedName ?? undefined);
+      if (result === 'written') await AsyncStorage.removeItem(NEEDS_REPROVISION_KEY);
     } catch (e) {
       console.warn('reprovision failed (will retry on next reconnect):', e);
     }
@@ -241,6 +243,24 @@ export default function App() {
     });
     return () => sub.remove();
   }, [onboardingComplete]);
+
+  // Crew invites opened from outside the app (the iPhone camera on an RNDVU
+  // QR, or a shared rndvu://join link). Before setup is finished there's no
+  // radio to put the key on, so ask them to scan again from onboarding.
+  useEffect(() => {
+    if (isLoading) return;
+    const handle = (url: string | null) => {
+      if (!url || !url.toLowerCase().startsWith('rndvu://join')) return;
+      if (!onboardingComplete) {
+        Alert.alert('Set up first', "Finish connecting your radio, then choose Join with a QR and scan the invite again.");
+        return;
+      }
+      confirmJoin(url);
+    };
+    Linking.getInitialURL().then(handle).catch(() => {});
+    const sub = Linking.addEventListener('url', ({ url }) => handle(url));
+    return () => sub.remove();
+  }, [isLoading, onboardingComplete]);
 
   async function reconnectOnForeground() {
     const { status, released } = useDeviceStore.getState();

@@ -20,6 +20,10 @@ export interface Crew {
 
 const CREW_KEY = 'rndvu_crew';
 const MODEL2_KEY = 'rndvu_model2';
+// The switch's default for a fresh install. The Beyond Wonderland build sets
+// EXPO_PUBLIC_RNDVU_MODEL2=1 so new crews start on per-crew keys; until then
+// it's off and testers turn it on in the Device sheet.
+const MODEL2_DEFAULT = process.env.EXPO_PUBLIC_RNDVU_MODEL2 === '1';
 
 export function newCrewKey(): Uint8Array {
   return getRandomBytes(CREW_KEY_BYTES);
@@ -45,7 +49,7 @@ interface CrewKeyState {
 
 export const useCrewKeyStore = create<CrewKeyState>((set) => ({
   crew: null,
-  model2: false,
+  model2: MODEL2_DEFAULT,
   loaded: false,
 
   setCrew: (crew) => {
@@ -74,7 +78,7 @@ export const useCrewKeyStore = create<CrewKeyState>((set) => ({
           crew = { id: crewIdFor(psk), psk, displayName: s.displayName, createdAt: s.createdAt, source: s.source };
         }
       }
-      set({ crew, model2: rawFlag === '1', loaded: true });
+      set({ crew, model2: rawFlag === null ? MODEL2_DEFAULT : rawFlag === '1', loaded: true });
     } catch {
       set({ loaded: true });
     }

@@ -23,6 +23,7 @@ import type { CrewMember } from '../types/crew';
 import type { Stage } from '../types/festival';
 import { useEndTripStore, debriefHandled, skipDebrief } from '../components/debrief/EndTripSheet';
 import { shouldOfferDebrief } from '../utils/debrief';
+import CrewKeyCard from '../components/crew/CrewKeyCard';
 
 const BATTERY_CRITICAL = 15;
 
@@ -440,6 +441,8 @@ export default function CrewScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.primary} />
         }
       >
+        <CrewKeyCard />
+
         {offerDebrief && (
           <View style={[styles.card, styles.debriefCard]}>
             <View style={styles.info}>
