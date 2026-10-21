@@ -29,6 +29,7 @@ import {
   parseMessage,
 } from '../services/mesh/MessageService';
 import { hapticLight, hapticMedium, hapticWarning } from '../utils/haptics';
+import { sendCrewMessage } from '../services/mesh/send';
 import { NOT_EMERGENCY_SERVICES } from '../config/safetyCopy';
 
 function to12Hour(h24: number): { hour12: number; ampm: 'AM' | 'PM' } {
@@ -103,33 +104,25 @@ export default function ChatScreen() {
       return;
     }
     setSending(true);
-    const now = Date.now();
-    const selfId = `self-${now}-${Math.random()}`;
-    const msg = parseMessage(text, myNodeNum, myName, now, 0);
-    addMessage({ ...msg, id: selfId, sendStatus: 'sending' });
-
+    const msg = parseMessage(text, myNodeNum, myName, Date.now(), 0);
     if (msg.type === 'going') {
       useScheduleStore.getState().addGoingEntry({
         nodeId: myNodeNum,
         nodeName: myName,
         stageId: msg.stageId,
         artistId: msg.artistId,
-        timestamp: now,
+        timestamp: Date.now(),
       });
     }
 
-    try {
-      await bleService.sendText(text);
-      useMessagesStore.getState().setSendStatus(selfId, 'sent');
-    } catch (e) {
-      console.warn('Send failed:', e);
-      useMessagesStore.getState().setSendStatus(selfId, 'failed');
+    const result = await sendCrewMessage(text);
+    setSending(false);
+    if (!result.ok) {
       Alert.alert('Send Failed', 'Message could not be sent. Check your device connection.');
-    } finally {
-      setSending(false);
     }
     scrollToBottom();
-  }, [myNodeNum, myName, addMessage, sending]);
+    return result;
+  }, [myNodeNum, myName, sending]);
 
   const sendHeading = useCallback(async (stageId: string) => {
     await sendRaw(buildHeadingMessage(stageId));

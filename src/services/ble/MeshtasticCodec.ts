@@ -197,6 +197,7 @@ function decodeMeshPacket(bytes: Uint8Array): MeshPacket {
       portnum: df.has(1) ? varintVal(df.get(1)![0]) : 0,
       payload: df.has(2) ? df.get(2)![0] : new Uint8Array(),
     };
+    if (df.has(7)) packet.decoded.replyId = fixed32Val(df.get(7)![0]); // Data.reply_id: fixed32
   }
   if (fields.has(6)) packet.id = fixed32Val(fields.get(6)![0]);     // fixed32
   if (fields.has(7)) packet.rxTime = fixed32Val(fields.get(7)![0]); // fixed32
@@ -332,9 +333,31 @@ function float32Val(field: Uint8Array): number {
 /** Meshtastic's default hop limit; also what the fleet radios are flashed with. */
 export const MESSAGE_HOP_LIMIT = 3;
 
-export function encodeToRadio(to: number, text: string, myNodeNum: number, channelIndex = 0): Uint8Array {
+/**
+ * A packet id chosen by the phone. Firmware keeps a non-zero id the phone
+ * supplies (MeshService::handleToRadio only picks one when it's 0), so the
+ * sender knows the id every receiver sees, which is what replies point at.
+ */
+export function newPacketId(): number {
+  let id = 0;
+  while (id === 0) id = (Math.random() * 0x100000000) >>> 0;
+  return id;
+}
+
+export interface SendOptions {
+  /** MeshPacket.id (field 6). Omit to let the firmware pick one. */
+  id?: number;
+  /** Data.reply_id (field 7): the packet id this message answers. */
+  replyId?: number;
+}
+
+export function encodeToRadio(to: number, text: string, myNodeNum: number, channelIndex = 0, opts: SendOptions = {}): Uint8Array {
   const textBytes = new TextEncoder().encode(text);
-  const dataPayload = concat(varField(1, PortNum.TEXT_MESSAGE_APP), lenField(2, textBytes));
+  const dataPayload = concat(
+    varField(1, PortNum.TEXT_MESSAGE_APP),
+    lenField(2, textBytes),
+    ...(opts.replyId ? [fixed32Field(7, opts.replyId)] : []),
+  );
   const isBroadcast = to === 0xffffffff;
   // want_ack on a broadcast triggers Meshtastic's reliable-broadcast flood:
   // every receiver re-transmits as implicit ACK and the sender retries up to
@@ -353,6 +376,7 @@ export function encodeToRadio(to: number, text: string, myNodeNum: number, chann
     varField(9, MESSAGE_HOP_LIMIT),
   ];
   if (!isBroadcast) parts.push(varField(10, 1)); // want_ack: field 10
+  if (opts.id) parts.push(fixed32Field(6, opts.id)); // id: fixed32
   const meshPacket = concat(...parts);
   return lenField(1, meshPacket);
 }

@@ -1,4 +1,5 @@
-import type { Message, TextMessage, HeadingMessage, RallyMessage, SOSMessage, GoingMessage, UngoingMessage, ColorMessage, TagMessage, MeetupMessage } from '../../types/messages';
+import type { Message, TextMessage, HeadingMessage, RallyMessage, SOSMessage, GoingMessage, UngoingMessage, ColorMessage, TagMessage, MeetupMessage, ReplyMessage, ReplyKind } from '../../types/messages';
+import { REPLY_KINDS } from '../../types/messages';
 import type { TagCategory } from '../../types/festival';
 
 let _seq = 0;
@@ -108,6 +109,12 @@ export function parseMessage(
         }
         return result as MeetupMessage;
       }
+      case 'Y': {
+        // Reply: MF:Y:<kind>. What it answers travels in Data.reply_id.
+        const kind = parts[2] as ReplyKind;
+        if (!REPLY_KINDS.includes(kind)) throw new Error('Unknown reply');
+        return { ...base, type: 'reply', kind } as ReplyMessage;
+      }
       default:
         return { ...base, type: 'text', text: raw } as TextMessage;
     }
@@ -143,6 +150,11 @@ export function buildColorMessage(color: string): string {
 
 export function buildTagMessage(lat: number, lng: number, name: string, category: TagCategory = 'custom'): string {
   return `MF:T:${lat.toFixed(4)},${lng.toFixed(4)}:${category}:${name.substring(0, 30)}`;
+}
+
+// Send with sendText(..., { replyId: <original packetId> }).
+export function buildReplyMessage(kind: ReplyKind): string {
+  return `MF:Y:${kind}`;
 }
 
 export function buildMeetupMessage(hour: number, minute: number, location: string, note?: string, lat?: number, lng?: number): string {

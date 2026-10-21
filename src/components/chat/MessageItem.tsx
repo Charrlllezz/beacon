@@ -33,6 +33,7 @@ const MessageItem = memo(({ item, myNodeNum }: Props) => {
     }
     case 'color': return null;
     case 'ungoing': return null; // handled in PacketRouter; never rendered
+    case 'reply': return null;   // shown on the card it answers
     default: return <MessageBubble message={item} isMine={isMine} />;
   }
 });

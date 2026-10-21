@@ -54,6 +54,7 @@ export interface DataPayload {
   wantResponse?: boolean;
   dest?: number;
   source?: number;
+  replyId?: number; // Data.reply_id: the packet id this message answers
 }
 
 export enum PortNum {

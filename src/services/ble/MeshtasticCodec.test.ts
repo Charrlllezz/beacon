@@ -17,9 +17,10 @@ import {
   MESSAGE_HOP_LIMIT,
   encodeSetTelemetryConfig,
   DEVICE_TELEMETRY_INTERVAL_SECS,
+  newPacketId,
 } from './MeshtasticCodec';
 import { PortNum } from '../../types/mesh';
-import { getField, varintOf } from './sim/wire';
+import { getField, varintOf, fixed32Of, lenField } from './sim/wire';
 
 // Helper: find a field tag byte in a protobuf wire payload. Tag byte for
 // field N with wire type W is (N<<3)|W.
@@ -74,6 +75,35 @@ describe('encodeToRadio', () => {
       expect(varintOf(getField(packet, 9))).toBe(MESSAGE_HOP_LIMIT);
     }
     expect(MESSAGE_HOP_LIMIT).toBe(3);
+  });
+
+  test('carries a phone-chosen packet id and a reply_id, which decode back', () => {
+    const toRadio = encodeToRadio(0xffffffff, 'MF:Y:omw', 0x1234, 0, { id: 0xcafef00d, replyId: 0x0badbeef });
+    const packet = getField(toRadio, 1)!.value;
+    expect(fixed32Of(getField(packet, 6))).toBe(0xcafef00d);
+    expect(fixed32Of(getField(getField(packet, 4)!.value, 7))).toBe(0x0badbeef);
+
+    // The same MeshPacket coming back from the radio (FromRadio.packet = 2).
+    const decoded = decodeFromRadio(lenField(2, packet)).packet!;
+    expect(decoded.id).toBe(0xcafef00d);
+    expect(decoded.decoded?.replyId).toBe(0x0badbeef);
+  });
+
+  test('without options, no id and no reply_id (firmware picks the id)', () => {
+    const packet = getField(encodeToRadio(0xffffffff, 'hi', 0x1234, 0), 1)!.value;
+    expect(getField(packet, 6)).toBeUndefined();
+    expect(getField(getField(packet, 4)!.value, 7)).toBeUndefined();
+  });
+});
+
+describe('newPacketId', () => {
+  test('is a non-zero uint32', () => {
+    for (let i = 0; i < 200; i++) {
+      const id = newPacketId();
+      expect(id).toBeGreaterThan(0);
+      expect(id).toBeLessThanOrEqual(0xffffffff);
+      expect(Number.isInteger(id)).toBe(true);
+    }
   });
 });
 
