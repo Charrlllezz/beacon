@@ -15,7 +15,13 @@ For each radio:
 The radio ends up blank: no region, no channel, no name. Pairing in the RNDVU
 app sets all of that in one step. Naming stays on the phone.
 
+With --crew ORDER (Model 2 shipped packs), each radio also gets that order's
+crew key: the RNDVU channel with a random 32-byte key generated once per
+order and kept in orders/ORDER.json (git-ignored; back it up privately). The
+RNDVU app adopts the key at pairing, so the crew needs no invite.
+
     python flash_fleet.py                 # loop: one radio after another
+    python flash_fleet.py --crew 1001     # pre-key a pack for order 1001
     python flash_fleet.py --skip-verify   # no Meshtastic CLI installed
     python flash_fleet.py --firmware-only # reflash without erasing
 
@@ -26,14 +32,18 @@ See docs/fleet-flashing.md.
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import hashlib
+import json
 import os
 import re
 import shutil
 import string
+import subprocess
 import sys
 import time
+import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass
@@ -54,10 +64,11 @@ ERASE_UF2 = {
 
 HERE = Path(__file__).resolve().parent
 CACHE = HERE / ".cache"
+ORDERS = HERE / "orders"
 INVENTORY = HERE / "inventory.csv"
 INVENTORY_FIELDS = [
     "label", "node_id", "firmware", "board", "bootloader", "softdevice",
-    "erased", "flashed_at", "notes",
+    "erased", "flashed_at", "crew", "notes",
 ]
 
 
@@ -228,6 +239,152 @@ def verify_radio(timeout_s: float = 90) -> RadioInfo | None:
     return None
 
 
+# ── Crew keys (Model 2) ──────────────────────────────────────────────────────
+#
+# Must match the app's invite format (src/services/crew/invite.ts): channel
+# RNDVU (the name picks the frequency every crew shares), the crew's 32-byte
+# key, exact position precision, US LONG_FAST, hop limit 3. A test pins both
+# sides to the same fixture string.
+
+CHANNEL_NAME = "RNDVU"
+POSITION_PRECISION_EXACT = 32
+CREW_KEY_BYTES = 32
+
+
+def _varint(n: int) -> bytes:
+    out = bytearray()
+    while n > 0x7F:
+        out.append((n & 0x7F) | 0x80)
+        n >>= 7
+    out.append(n)
+    return bytes(out)
+
+
+def _len_field(num: int, body: bytes) -> bytes:
+    return _varint((num << 3) | 2) + _varint(len(body)) + body
+
+
+def _var_field(num: int, value: int) -> bytes:
+    return _varint(num << 3) + _varint(value)
+
+
+def channel_set(psk: bytes) -> bytes:
+    """Meshtastic ChannelSet { settings = 1; lora_config = 2 } for one crew."""
+    settings = (
+        _len_field(2, psk)
+        + _len_field(3, CHANNEL_NAME.encode())
+        + _len_field(7, _var_field(1, POSITION_PRECISION_EXACT))
+    )
+    lora = (
+        _var_field(1, 1)    # use_preset
+        + _var_field(2, 0)  # modem_preset LONG_FAST
+        + _var_field(7, 1)  # region US
+        + _var_field(8, 3)  # hop_limit
+        + _var_field(9, 1)  # tx_enabled
+    )
+    return _len_field(1, settings) + _len_field(2, lora)
+
+
+def _b64url(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).decode().rstrip("=")
+
+
+def meshtastic_url(psk: bytes) -> str:
+    return f"https://meshtastic.org/e/#{_b64url(channel_set(psk))}"
+
+
+def invite_url(psk: bytes, crew_name: str) -> str:
+    """The RNDVU invite, for the printed card's backup QR."""
+    return f"rndvu://join#v=1&cs={_b64url(channel_set(psk))}&n={urllib.parse.quote(crew_name, safe='')}"
+
+
+def crew_id(psk: bytes) -> str:
+    """FNV-1a fingerprint, as the app shows it (MeshtasticCodec pskFingerprint)."""
+    h = 0x811C9DC5
+    for b in psk:
+        h ^= b
+        h = (h * 0x01000193) & 0xFFFFFFFF
+    return f"{h:08x}"[:6]
+
+
+@dataclass
+class Order:
+    order_id: str
+    psk: bytes
+    crew_name: str
+
+    @property
+    def crew_id(self) -> str:
+        return crew_id(self.psk)
+
+
+def load_or_create_order(order_id: str, crew_name: str | None = None, orders_dir: Path = ORDERS) -> Order:
+    """One key per order, created once from the OS's secure random source.
+    Re-running for the same order reuses it, so a pack flashed over several
+    sessions (or a replacement radio) ends up in the same crew."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,40}", order_id):
+        raise ValueError("Order id: letters, digits, - and _ only.")
+    orders_dir.mkdir(exist_ok=True)
+    path = orders_dir / f"{order_id}.json"
+    if path.exists():
+        data = json.loads(path.read_text())
+        psk = base64.b64decode(data["psk"])
+        if len(psk) != CREW_KEY_BYTES:
+            raise RuntimeError(f"{path} has a bad key; not using it.")
+        return Order(order_id, psk, data.get("crew_name") or f"Order {order_id}")
+    psk = os.urandom(CREW_KEY_BYTES)
+    order = Order(order_id, psk, crew_name or f"Order {order_id}")
+    path.write_text(json.dumps({
+        "order": order_id,
+        "crew_name": order.crew_name,
+        "psk": base64.b64encode(psk).decode(),
+        "crew_id": order.crew_id,
+        "invite_url": invite_url(psk, order.crew_name),
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+    }, indent=2))
+    return order
+
+
+def key_radio(order: Order, timeout_s: float = 90) -> bool:
+    """Write the order's crew channel to the radio on USB and read it back."""
+    try:
+        from meshtastic import util as mt_util  # type: ignore
+        from meshtastic.serial_interface import SerialInterface  # type: ignore
+    except ImportError:
+        print("  meshtastic not installed; can't key the radio. `pip install meshtastic`")
+        return False
+    ports = mt_util.findPorts(True)
+    if len(ports) != 1:
+        print(f"  expected one radio on USB, found {len(ports)}")
+        return False
+    # --seturl writes the channel and LoRa settings; the radio reboots to apply.
+    # The key goes as a process argument on this machine only, never printed.
+    result = subprocess.run(
+        [sys.executable, "-m", "meshtastic", "--port", ports[0], "--seturl", meshtastic_url(order.psk)],
+        capture_output=True, text=True, timeout=120,
+    )
+    if result.returncode != 0:
+        print(f"  --seturl failed: {result.stderr.strip()[-300:]}")
+        return False
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        time.sleep(5)  # reboot
+        try:
+            iface = SerialInterface(devPath=ports[0])
+        except Exception:  # noqa: BLE001 - still rebooting
+            continue
+        try:
+            ch = iface.localNode.channels[0] if iface.localNode and iface.localNode.channels else None
+            ok = ch is not None and ch.settings.name == CHANNEL_NAME and bytes(ch.settings.psk) == order.psk
+            if not ok:
+                print("  channel read back doesn't match the order's key")
+            return ok
+        finally:
+            iface.close()
+    print("  radio didn't come back on USB after keying")
+    return False
+
+
 # ── Inventory ────────────────────────────────────────────────────────────────
 
 def read_inventory(path: Path = INVENTORY) -> list[dict[str, str]]:
@@ -251,6 +408,18 @@ def label_for(node_id: str, rows: list[dict[str, str]]) -> str:
 
 
 def append_inventory(row: dict[str, str], path: Path = INVENTORY) -> None:
+    # An inventory written before a column was added: rewrite it with the
+    # current header so rows stay aligned.
+    if path.exists():
+        with path.open(newline="") as f:
+            header = next(csv.reader(f), [])
+        if header and header != INVENTORY_FIELDS:
+            rows = read_inventory(path)
+            with path.open("w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=INVENTORY_FIELDS)
+                w.writeheader()
+                for r in rows:
+                    w.writerow({k: r.get(k, "") for k in INVENTORY_FIELDS})
     new = not path.exists()
     with path.open("a", newline="") as f:
         w = csv.DictWriter(f, fieldnames=INVENTORY_FIELDS)
@@ -261,7 +430,7 @@ def append_inventory(row: dict[str, str], path: Path = INVENTORY) -> None:
 
 # ── Main loop ────────────────────────────────────────────────────────────────
 
-def flash_one(files: dict[str, Path], erase: bool, verify: bool) -> bool:
+def flash_one(files: dict[str, Path], erase: bool, verify: bool, order: Order | None = None) -> bool:
     info = wait_for_boot_drive(
         600, "\nPlug in the next T-Echo and double-tap its reset button (Ctrl+C to stop).")
     if info is None:
@@ -291,6 +460,14 @@ def flash_one(files: dict[str, Path], erase: bool, verify: bool) -> bool:
     label = label_for(node_id, rows)
     ok = radio is not None and radio.firmware.startswith(FLEET_FIRMWARE)
     notes = "" if ok or not verify else f"VERIFY FAILED (read '{radio.firmware if radio else 'nothing'}')"
+    crew = ""
+    if order is not None:
+        print(f"  Keying for order {order.order_id} (crew {order.crew_id}) ...")
+        if key_radio(order):
+            crew = f"{order.order_id}:{order.crew_id}"
+        else:
+            ok = False
+            notes = (notes + " " if notes else "") + "CREW KEY FAILED"
     append_inventory({
         "label": label,
         "node_id": node_id,
@@ -300,6 +477,7 @@ def flash_one(files: dict[str, Path], erase: bool, verify: bool) -> bool:
         "softdevice": info.softdevice,
         "erased": "yes" if erase else "no",
         "flashed_at": datetime.now().isoformat(timespec="seconds"),
+        "crew": crew,
         "notes": notes,
     })
     print(f"  {'OK' if ok or not verify else 'CHECK'}: label {label} {node_id} {notes}")
@@ -312,12 +490,22 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--firmware-only", action="store_true", help="flash without the factory erase")
     ap.add_argument("--skip-verify", action="store_true", help="don't read the radio back over serial")
     ap.add_argument("--once", action="store_true", help="flash one radio and exit")
+    ap.add_argument("--crew", metavar="ORDER", help="pre-key each radio with this order's crew key (Model 2)")
+    ap.add_argument("--crew-name", help="crew name for a new order (shown in the app; default 'Order ORDER')")
     args = ap.parse_args(argv)
+
+    order = None
+    if args.crew:
+        if args.skip_verify:
+            ap.error("--crew needs the radio on USB serial; drop --skip-verify")
+        order = load_or_create_order(args.crew, args.crew_name)
+        print(f"Order {order.order_id}: crew '{order.crew_name}', key {order.crew_id} "
+              f"(orders/{order.order_id}.json, keep it private)")
 
     files = ensure_bundle()
     print(f"Firmware {FLEET_FIRMWARE} ready ({FIRMWARE_UF2}). Inventory: {INVENTORY}")
     try:
-        while flash_one(files, erase=not args.firmware_only, verify=not args.skip_verify):
+        while flash_one(files, erase=not args.firmware_only, verify=not args.skip_verify, order=order):
             if args.once:
                 break
     except KeyboardInterrupt:

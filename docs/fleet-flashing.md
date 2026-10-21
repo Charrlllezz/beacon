@@ -5,8 +5,8 @@ and wipe it clean before setup. `tools/flash-fleet/flash_fleet.py` does the
 flashing and keeps the inventory. You plug the radios in and press the reset
 button.
 
-Each radio comes out **blank**: no region, no channel, no name. That's
-intended. Pairing in the RNDVU app sets region US, the RNDVU channel, location
+Each radio comes out **blank**: no region, no channel, no name, unless you key
+it for a shipped pack with `--crew` (below). Blank is intended. Pairing in the RNDVU app sets region US, the RNDVU channel, location
 sharing, battery reports and the user's name in one step, with one reboot. Names
 stay on the phone; the flashing station never sets them.
 
@@ -49,6 +49,31 @@ radio at a time, because the script stops if it sees two.
 - `--firmware-only` updates firmware without wiping, which is for radios you
   want to keep paired.
 - `--once` does a single radio.
+- `--crew ORDER [--crew-name "Ash's crew"]` pre-keys a shipped pack (Model 2;
+  see below).
+
+## Shipped packs: pre-keying an order (Model 2)
+
+`python flash_fleet.py --crew 1001 --crew-name "Ash's crew"`
+
+- **The first run for an order** generates its crew key (32 random bytes from
+  the OS) and saves it in `orders/1001.json`. That file also holds the crew id
+  and an `invite_url` for the printed card's backup QR.
+- **Every radio flashed in that run** then gets the RNDVU channel with that
+  key over USB (`meshtastic --seturl`). The script reads it back to check, and
+  the inventory's `crew` column records `1001:<crew id>`.
+- **Re-running with the same order reuses its key.** A pack done over two
+  sessions, or a replacement radio, lands in the same crew.
+- **The crew needs no invite.** They pair in RNDVU and the app adopts the
+  radio's key. The done screen and the Crew tab show the crew; check the id
+  matches what the script printed.
+
+**`orders/` is secret.** It's git-ignored. Anyone with the file can read that
+crew's messages. Back it up somewhere private, and delete an order's file once
+its radios come back and are wiped.
+
+If the script prints `CREW KEY FAILED`, flash that radio again with the same
+`--crew`.
 
 ## Check each radio (the week-1 health check)
 

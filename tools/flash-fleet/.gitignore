@@ -1,3 +1,5 @@
 .cache/
 inventory.csv
+# Crew keys per order (Model 2). Secret: never commit; back up privately.
+orders/
 __pycache__/

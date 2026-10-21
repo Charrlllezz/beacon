@@ -1,7 +1,15 @@
 # Model 2: per-crew keys
 
-Status: **draft for decisions**. Oct 20, 2026. Plan work-queue item 4: design in
-week 5, finished by week 13, never cut.
+Status: **built behind a switch** (PRs #24–#26). Plan work-queue item 4: design
+in week 5, finished by week 13, never cut. Before the switch defaults on, run
+the hardware test in `docs/hardware-tests/model-2-crews.md`.
+
+Changes from this draft, made while building it:
+- The invite drops `c=`, because the crew id is the key's fingerprint.
+- **QR first** uses the app's existing `rndvu://` scheme. The iPhone camera
+  opens RNDVU from an invite QR without a domain. The https link waits for the
+  domain, and its parser is already in place.
+- Leave moves you to a crew of one named "Just me".
 
 ## Why
 
