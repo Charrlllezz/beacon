@@ -10,6 +10,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
 
 import { routeFromRadio, onMeshMessage } from './PacketRouter';
 import { PortNum } from '../../types/mesh';
+import { encodePosition } from './MeshtasticCodec';
 import type { FromRadio } from '../../types/mesh';
 import type { Message } from '../../types/messages';
 import { useCrewStore } from '../../store/useCrewStore';
@@ -64,6 +65,26 @@ describe('PacketRouter onMeshMessage', () => {
     expect(seen).toEqual([]);
     expect(useMessagesStore.getState().messages.length).toBe(before);
     off();
+  });
+
+  test('a position records when it was taken; an older replay does not overwrite it', () => {
+    const now = Math.floor(Date.now() / 1000);
+    useCrewStore.getState().upsertMember({ nodeId: PEER, longName: 'Maya', shortName: 'MAYA', lastHeard: now });
+    const position = (latitudeI: number, time: number): FromRadio => ({
+      packet: {
+        from: PEER, to: 0xffffffff, channel: 0, id: nextId++, rxTime: now,
+        decoded: { portnum: PortNum.POSITION_APP, payload: encodePosition({ latitudeI, longitudeI: -1172700000, time }) },
+      },
+    } as FromRadio);
+
+    routeFromRadio(position(340700000, now - 120), ME);
+    expect(useCrewStore.getState().crewMembers[PEER].locationAt).toBe(now - 120);
+
+    // The radio's node DB replays a 40-minute-old fix on reconnect.
+    routeFromRadio(position(340000000, now - 2400), ME);
+    const m = useCrewStore.getState().crewMembers[PEER];
+    expect(m.lat).toBeCloseTo(34.07, 4);
+    expect(m.locationAt).toBe(now - 120);
   });
 
   test('a throwing listener does not break routing', () => {

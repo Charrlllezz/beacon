@@ -19,6 +19,7 @@ import { buildTagMessage, parseMessage } from '../services/mesh/MessageService';
 import { useMessagesStore } from '../store/useMessagesStore';
 import { useDeviceStore } from '../store/useDeviceStore';
 import { hapticMedium } from '../utils/haptics';
+import { pinAge } from '../utils/pinAge';
 import type { TagCategory, TagScope, TaggedPOI } from '../types/festival';
 
 const CATEGORY_COLORS: Record<TagCategory, string> = {
@@ -80,6 +81,13 @@ export default function MapScreen() {
     ? Math.abs(myLocation.lat - config.venue.center.lat) < 0.05 &&
       Math.abs(myLocation.lng - config.venue.center.lng) < 0.05
     : false;
+
+  // Ticks every 30 s so pin-age labels count up while the map is open.
+  const [now, setNow] = useState(() => Date.now() / 1000);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now() / 1000), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   const crewWithLocation = Object.values(crewMembers).filter(
     m => !m.isSelf && m.lat !== undefined && m.lng !== undefined
@@ -262,13 +270,18 @@ export default function MapScreen() {
 
           {/* Self location handled by showsUserLocation (native blue dot) */}
 
-          {/* Crew pins */}
+          {/* Crew pins, labelled with how old the position is and faded once
+              stale, so a 40-minute-old pin doesn't look live. */}
           {crewWithLocation.map(member => {
             const bg = member.color ?? Colors.primary;
             const initials = member.shortName.slice(0, 2).toUpperCase();
+            const age = pinAge(member.locationAt, now);
             return (
               <Marker
-                key={member.nodeId}
+                // tracksViewChanges is off, so the key carries the label:
+                // a new label re-creates the marker and the view updates.
+                key={`${member.nodeId}-${age.label}-${age.stale ? 's' : 'f'}`}
+                opacity={age.stale ? 0.45 : 1}
                 coordinate={{ latitude: member.lat!, longitude: member.lng! }}
                 tracksViewChanges={false}
                 onPress={() => {
@@ -285,6 +298,7 @@ export default function MapScreen() {
                     <Text style={styles.crewPinText}>{initials}</Text>
                   </View>
                   <View style={[styles.crewPinTail, { borderTopColor: bg }]} />
+                  <Text style={[styles.crewPinAge, age.stale && styles.crewPinAgeStale]}>{age.label}</Text>
                 </View>
               </Marker>
             );
@@ -471,6 +485,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   crewPinText: { color: '#fff', fontWeight: '900', fontSize: 9 },
+  crewPinAge: {
+    marginTop: 1,
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#fff',
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 3,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  crewPinAgeStale: { color: Colors.textMuted },
   crewPinTail: {
     width: 0,
     height: 0,
