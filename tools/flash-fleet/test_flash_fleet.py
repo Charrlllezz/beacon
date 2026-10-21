@@ -59,6 +59,59 @@ class InventoryTests(unittest.TestCase):
             self.assertEqual([r["label"] for r in rows], ["R01", "R02"])
             self.assertEqual(rows[0]["firmware"], "2.7.26.54e0d8d")
 
+    def test_old_inventory_gets_the_new_column_without_misaligning(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "inv.csv"
+            old_fields = [f for f in ff.INVENTORY_FIELDS if f != "crew"]
+            path.write_text(",".join(old_fields) + "\nR01,!00000001,2.7.26,b,0.6.1,6.1.1,yes,t,old note\n")
+            ff.append_inventory({"label": "R02", "node_id": "!00000002", "crew": "1001:0913ad"}, path)
+            rows = ff.read_inventory(path)
+            self.assertEqual(rows[0]["notes"], "old note")
+            self.assertEqual(rows[0]["crew"], "")
+            self.assertEqual(rows[1]["crew"], "1001:0913ad")
+
+
+class CrewKeyTests(unittest.TestCase):
+    # Pinned to the same strings as src/services/crew/fixture.test.ts: the app
+    # and the flashing station must build identical channels.
+    FIXTURE_KEY = bytes(range(32))
+    FIXTURE_URL = ("https://meshtastic.org/e/#Ci0SIAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fGgVSTkRWVToCCCASCggBEAA4AUADSAE")
+
+    def test_channel_matches_the_app(self):
+        self.assertEqual(ff.meshtastic_url(self.FIXTURE_KEY), self.FIXTURE_URL)
+        self.assertEqual(ff.crew_id(self.FIXTURE_KEY), "0913ad")
+        self.assertEqual(
+            ff.invite_url(self.FIXTURE_KEY, "Order 1001"),
+            f"rndvu://join#v=1&cs={self.FIXTURE_URL.split('#')[1]}&n=Order%201001",
+        )
+
+    def test_app_fixture_is_the_same(self):
+        ts = (Path(__file__).resolve().parents[2] / "src/services/crew/fixture.test.ts").read_text()
+        self.assertIn(self.FIXTURE_URL.split("#")[1], ts)
+
+    def test_one_key_per_order_reused_across_sessions(self):
+        with tempfile.TemporaryDirectory() as d:
+            a = ff.load_or_create_order("1001", "Ash's crew", Path(d))
+            b = ff.load_or_create_order("1001", None, Path(d))
+            c = ff.load_or_create_order("1002", None, Path(d))
+            self.assertEqual(len(a.psk), 32)
+            self.assertEqual(a.psk, b.psk)
+            self.assertEqual(b.crew_name, "Ash's crew")
+            self.assertNotEqual(a.psk, c.psk)
+            self.assertEqual(c.crew_name, "Order 1002")
+            saved = (Path(d) / "1001.json").read_text()
+            self.assertIn('"crew_id": "%s"' % a.crew_id, saved)
+            self.assertIn("rndvu://join#v=1&cs=", saved)
+
+    def test_rejects_unsafe_order_ids(self):
+        with tempfile.TemporaryDirectory() as d:
+            for bad in ["../x", "a b", "", "x" * 41]:
+                with self.assertRaises(ValueError):
+                    ff.load_or_create_order(bad, None, Path(d))
+
+    def test_orders_are_git_ignored(self):
+        self.assertIn("orders/", (Path(__file__).resolve().parent / ".gitignore").read_text())
+
 
 class PinTests(unittest.TestCase):
     def test_pinned_files_match_the_release(self):
