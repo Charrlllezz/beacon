@@ -23,27 +23,36 @@ export function getTilePath(): string {
   return getTileDir().uri;
 }
 
+export interface PrefetchResult {
+  total: number;
+  failed: number;
+  // Stopped early: a whole batch failed, which means no network (e.g. already
+  // at the venue). The rest weren't attempted; the next foreground retries.
+  aborted: boolean;
+}
+
 export async function prefetchVenueTiles(
   bounds: GeoBounds,
   onProgress?: (downloaded: number, total: number) => void,
-): Promise<void> {
-  if (isTilesPrefetched(bounds)) return;
+): Promise<PrefetchResult> {
+  const tiles = tilesForBounds(bounds);
+  const total = tiles.length;
+  if (isTilesPrefetched(bounds)) return { total, failed: 0, aborted: false };
 
   const tileDir = getTileDir();
   if (!tileDir.exists) {
     tileDir.create({ intermediates: true });
   }
 
-  const tiles = tilesForBounds(bounds);
-
   let downloaded = 0;
   let failed = 0;
-  const total = tiles.length;
 
   // Download in batches of 10
   const batchSize = 10;
   for (let i = 0; i < tiles.length; i += batchSize) {
     const batch = tiles.slice(i, i + batchSize);
+    const failedBefore = failed;
+    let attempted = 0;
     await Promise.all(
       batch.map(async ({ z, x, y }) => {
         const dir = new Directory(tileDir, String(z), String(x));
@@ -67,6 +76,7 @@ export async function prefetchVenueTiles(
 
         const url = TILE_URL.replace('{z}', String(z)).replace('{y}', String(y)).replace('{x}', String(x));
 
+        attempted++;
         try {
           await File.downloadFileAsync(url, file, { idempotent: true });
         } catch {
@@ -79,6 +89,11 @@ export async function prefetchVenueTiles(
         onProgress?.(downloaded, total);
       }),
     );
+    // Every download in this batch failed: no network. Stop instead of
+    // grinding through the rest; count them as missing.
+    if (attempted === batchSize && failed - failedBefore === attempted) {
+      return { total, failed: total - (downloaded - failed), aborted: true };
+    }
   }
 
   // Only mark prefetch complete when EVERY tile is on disk. Writing the marker
@@ -89,4 +104,5 @@ export async function prefetchVenueTiles(
     marker.create();
     marker.write(new Date().toISOString());
   }
+  return { total, failed, aborted: false };
 }

@@ -12,6 +12,16 @@ import { regionName, RNDVU_CHANNEL_NAME, RNDVU_CHANNEL_PSK } from '../services/b
 import { timeAgo } from '../utils/time';
 import { isSharingLocation } from '../utils/firmware';
 import { useFestivalStore } from '../store/useFestivalStore';
+import { useOfflineMapStore, type OfflineMapStatus } from '../store/useOfflineMapStore';
+import { festivalConfig } from '../services/festival/FestivalConfig';
+
+const OFFLINE_MAP_COLOR: Record<OfflineMapStatus, string> = {
+  idle: Colors.textSecondary,
+  downloading: Colors.warning,
+  ready: Colors.success,
+  incomplete: Colors.warning,
+  offline: Colors.error,
+};
 import { BUNDLED_FESTIVALS } from '../services/festival/festivals';
 import type { SelectionReason } from '../services/festival/FestivalSelection';
 
@@ -64,6 +74,17 @@ export default function DeviceScreen() {
   const activeFestivalId = useFestivalStore(s => s.activeId);
   const festivalReason = useFestivalStore(s => s.reason);
   const festivalOverride = useFestivalStore(s => s.overrideId);
+  const mapStatus = useOfflineMapStore(s => s.status);
+  const mapDone = useOfflineMapStore(s => s.done);
+  const mapTotal = useOfflineMapStore(s => s.total);
+  const mapMissing = useOfflineMapStore(s => s.missing);
+  const offlineMapLabel = {
+    idle: '—',
+    downloading: `downloading ${mapDone.toLocaleString()} / ${mapTotal.toLocaleString()}`,
+    ready: 'ready ✓',
+    incomplete: `${mapMissing.toLocaleString()} tiles missing`,
+    offline: 'no internet. Open RNDVU on Wi-Fi',
+  }[mapStatus];
 
   const close = () => useDeviceStore.getState().setDeviceSheetOpen(false);
   const meta = STATUS_META[status] ?? STATUS_META.disconnected;
@@ -264,6 +285,18 @@ export default function DeviceScreen() {
                 </View>
               </TouchableOpacity>
             ))}
+            <View style={[styles.kv, styles.offlineRow]}>
+              <Text style={styles.k}>Offline map</Text>
+              <Text style={[styles.v, { color: OFFLINE_MAP_COLOR[mapStatus] }]}>{offlineMapLabel}</Text>
+            </View>
+            {(mapStatus === 'incomplete' || mapStatus === 'offline') && (
+              <TouchableOpacity
+                onPress={() => useOfflineMapStore.getState().ensure(festivalConfig.getConfig())}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.retry}>Retry download</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <Text style={styles.sectionTitle}>TROUBLESHOOTING</Text>
@@ -371,6 +404,8 @@ const styles = StyleSheet.create({
   danger: { borderColor: Colors.error + '44' },
   actionTitle: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textPrimary },
   actionSub: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 3 },
+  offlineRow: { marginTop: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: Spacing.sm },
+  retry: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.primary, paddingVertical: 4 },
   festivalRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
   radio: { fontSize: FontSize.md, color: Colors.primary, width: 18 },
   festivalName: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textPrimary },
