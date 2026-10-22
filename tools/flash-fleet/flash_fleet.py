@@ -169,6 +169,58 @@ def copy_uf2(src: Path, info: BootInfo) -> None:
         time.sleep(0.5)
 
 
+ADAFRUIT_VID = 0x239A
+BOOTLOADER_PID = 0x0029   # the TECHOBOOT drive
+MESHTASTIC_PID = 0x4405   # Meshtastic firmware
+
+
+def is_erase_port(vid: int | None, pid: int | None) -> bool:
+    """The factory-erase program shows up as a serial port that is neither the
+    bootloader nor Meshtastic (0x8029 on the T-Echo)."""
+    return vid == ADAFRUIT_VID and pid not in (None, BOOTLOADER_PID, MESHTASTIC_PID)
+
+
+def run_erase(find_timeout_s: float = 30, run_timeout_s: float = 180) -> bool:
+    """Connect to the factory-erase program so it actually erases.
+
+    Found on the first real run: the erase program waits for something to open
+    its serial port before it formats anything. Nothing did, so the radio sat
+    idle until a double-tap sent it back to the bootloader, settings intact.
+    Returns True once the program has run and the port has gone away (it
+    reboots into the bootloader by itself)."""
+    try:
+        import serial  # type: ignore  (pyserial; installed with meshtastic)
+        from serial.tools import list_ports  # type: ignore
+    except ImportError:
+        print("  pyserial not installed, so the erase can't be started. `pip install meshtastic`")
+        return False
+
+    deadline = time.time() + find_timeout_s
+    port = None
+    while time.time() < deadline and port is None:
+        port = next((p.device for p in list_ports.comports() if is_erase_port(p.vid, p.pid)), None)
+        if port is None:
+            time.sleep(0.5)
+    if port is None:
+        print("  the erase program's serial port never appeared")
+        return False
+
+    saw_output = False
+    deadline = time.time() + run_timeout_s
+    try:
+        with serial.Serial(port, 115200, timeout=0.5) as s:
+            s.dtr = True
+            while time.time() < deadline:
+                line = s.readline().decode(errors="replace").strip()
+                if line:
+                    saw_output = True
+                    print(f"  | {line}")
+    except (serial.SerialException, OSError):
+        return saw_output  # the port vanished: done, rebooting to the bootloader
+    print("  the erase program didn't finish in time")
+    return False
+
+
 def drive_present(drive: Path) -> bool:
     """Is the bootloader drive still mounted? On Windows, a drive that vanishes
     mid-check raises (WinError 433) instead of returning False."""
@@ -464,8 +516,12 @@ def flash_one(files: dict[str, Path], erase: bool, verify: bool, order: Order | 
 
     if erase:
         copy_uf2(files[erase_file_for(info)], info)
+        print("  Erasing. Don't touch the radio; it returns to the bootloader by itself.")
+        if not run_erase():
+            print("  Erase didn't run. Unplug, retry this radio.")
+            return True
         info2 = wait_for_boot_drive(
-            90, "  Erasing. If the drive doesn't reappear in ~10 s, double-tap reset again.")
+            60, "  Erased. Waiting for the bootloader drive (double-tap reset if it doesn't appear in ~15 s).")
         if info2 is None:
             print("  Radio didn't come back to the bootloader. Unplug, retry this radio.")
             return True

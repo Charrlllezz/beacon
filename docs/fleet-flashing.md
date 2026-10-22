@@ -31,8 +31,10 @@ Run `python flash_fleet.py`. It loops, one radio at a time.
 3. **Double-tap the reset button.** The radio shows up as a USB drive. The
    script spots it and prints the bootloader and SoftDevice versions.
 4. The script copies the **factory-erase** file that matches the radio. It wipes
-   the radio's settings, keys, names and the list of radios it has heard. If the
-   drive doesn't come back within about 10 s, **double-tap reset again**.
+   the radio's settings, keys, names and the list of radios it has heard. The
+   script connects to the erase program, which is what starts it, and prints
+   its messages. **Don't touch the radio**; it comes back as the drive by itself.
+   Double-tap only if the script asks.
 5. The script copies the **firmware**. The drive disappears while the radio
    reboots into Meshtastic.
 6. The script reads the radio back over USB: firmware version and node id. It
@@ -111,10 +113,10 @@ with their own name.
   and until then the radio can stop answering on USB. It's blank when the screen
   says "Welcome to Meshtastic". Then run the script again with
   `--firmware-only`, or key it as below.
-- **The script stops at "Erasing" after 90 s.** The double-tap came too early or
-  too slow, and the radio is sitting in the erase program (Windows shows a serial
-  port but no drive). Run the script again and double-tap **fast**, about 5 s
-  after "Erasing".
+- **Why erases failed at first.** The erase program waits until something opens
+  its USB serial port, and only then formats. The script now opens it and shows
+  the erase program's own messages (`| Formating ...`), so **don't double-tap
+  during the erase**. The radio goes back to the bootloader drive by itself.
 - **"VERIFY FAILED".** The radio flashed but didn't report 2.7.26. Flash it
   again. If it fails twice, set it aside.
 - **The bootloader is older than 0.6.** It works, but Meshtastic recommends
