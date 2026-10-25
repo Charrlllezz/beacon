@@ -23,11 +23,16 @@ export function formatClock(hour: number, minute: number): string {
 }
 
 // One "in range" cutoff for the whole app: the card dot, the header count, the
-// sort and the crew strip. A radio that's still around sends a position every
-// ~15 minutes and a battery report every 30, so 30 minutes of silence means
-// out of range, off or flat. (The dot used to allow an hour while the strip
-// said 30 minutes, so a dead radio stayed green next to "5 of 6 in range".)
-export const IN_RANGE_SECS = 30 * 60;
+// sort and the crew strip. (The dot used to allow an hour while the strip said
+// 30 minutes, so they contradicted each other.)
+//
+// What a radio actually sends on firmware 2.7.26 with RNDVU's setup: battery
+// every 30 min (the most frequent), position every 60 min when standing still
+// (after ~100 m when moving), NodeInfo every 3 h. So 30 minutes of silence is
+// normal, and one lost battery packet makes a 60-minute gap. 65 minutes rides
+// out one lost packet without calling a quiet friend gone. Tighten this only
+// if the radios are set to report more often.
+export const IN_RANGE_SECS = 65 * 60;
 
 export function isOnline(lastHeardSeconds?: number, thresholdSeconds = IN_RANGE_SECS): boolean {
   // touchLastHeard fires on every received packet (incl. duplicates), so

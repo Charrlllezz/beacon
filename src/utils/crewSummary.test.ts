@@ -50,7 +50,7 @@ describe('one in-range cutoff', () => {
   test('the card dot and the strip agree', async () => {
     const { isOnline } = await import('./time');
     const now = Date.now() / 1000;
-    const sam = { nodeId: 1, longName: 'Sam', shortName: 'SAM', isOnline: false, lastHeard: now - 40 * 60 };
+    const sam = { nodeId: 1, longName: 'Sam', shortName: 'SAM', isOnline: false, lastHeard: now - 70 * 60 };
     expect(isOnline(sam.lastHeard)).toBe(false);
     expect(summarizeCrew([sam], now).inRange).toBe(0);
   });
