@@ -8,6 +8,9 @@ import { haversineDistance, formatDistance } from '../../utils/coordinates';
 import { CLOSE_RANGE_M, arrowAngle, bearingDegrees, compassPoint, nextRotation, usableHeading } from '../../utils/bearing';
 import { pinAge } from '../../utils/pinAge';
 import { hapticSuccess } from '../../utils/haptics';
+import { useDeviceStore } from '../../store/useDeviceStore';
+import { capabilities, startPreciseFind, type RangeState } from '../../../modules/rndvu-nearby';
+import { formatPrecise, isFresh, trend, uwbArrowDegrees, type Trend, type UwbReading } from '../../utils/preciseFind';
 
 interface Props {
   nodeId: number | null;
@@ -16,11 +19,17 @@ interface Props {
 }
 
 const ARROW_SIZE = 220;
+// Under this, UWB says "right here" instead of pointing.
+const HERE_M = 1.5;
+// Suggest precise finding once GPS puts them roughly within UWB range.
+const SUGGEST_PRECISE_M = 80;
 
 /**
  * Full-screen arrow to one crew member: which way to walk, how far, and how
- * old their position is. It only knows their last broadcast position, so it
- * says so when that's stale.
+ * old their position is. Far away it runs on their last GPS position over
+ * the mesh and says so when that's stale. Up close, when both phones have
+ * Find open on each other and support Ultra Wideband, it switches to UWB:
+ * exact distance and a live direction, like Find My's "Find Nearby".
  */
 export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
   // Keep showing the last person while the sheet slides closed.
@@ -34,6 +43,43 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
   const rotationTotal = useRef(0);
   const wasClose = useRef(false);
   const visible = nodeId != null;
+  const myNodeNum = useDeviceStore(s => s.myNodeNum);
+
+  // Ultra Wideband, when both phones can do it.
+  const [uwb, setUwb] = useState<UwbReading | null>(null);
+  const [uwbState, setUwbState] = useState<RangeState | null>(null);
+  const [converged, setConverged] = useState<boolean | null>(null);
+  const [uwbTrend, setUwbTrend] = useState<Trend>('steady');
+  const trendBase = useRef<{ d: number; at: number } | null>(null);
+  const canPrecise = useRef(capabilities()?.distance ?? false).current;
+
+  useEffect(() => {
+    const peer = shownId.current;
+    if (!visible || !canPrecise || !myNodeNum || peer == null) return;
+    const stop = startPreciseFind(myNodeNum, peer, e => {
+      setUwbState(e.state);
+      if (e.converged !== undefined) setConverged(e.converged);
+      if (e.distance === undefined) return;
+      const now = Date.now();
+      setUwb({ distance: e.distance, azimuth: e.azimuth, at: now });
+      // Warmer/colder against where they were ~2 s ago, not the last
+      // reading, so jitter doesn't flip it back and forth.
+      const base = trendBase.current;
+      if (!base) trendBase.current = { d: e.distance, at: now };
+      else if (now - base.at >= 2000) {
+        setUwbTrend(trend(base.d, e.distance));
+        trendBase.current = { d: e.distance, at: now };
+      }
+    });
+    return () => {
+      stop?.();
+      setUwb(null);
+      setUwbState(null);
+      setConverged(null);
+      setUwbTrend('steady');
+      trendBase.current = null;
+    };
+  }, [visible, nodeId, myNodeNum, canPrecise]);
 
   // Compass only while the sheet is open; it costs battery.
   useEffect(() => {
@@ -43,8 +89,9 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
     Location.watchHeadingAsync(h => setHeading(usableHeading(h)))
       .then(s => { if (cancelled) s.remove(); else sub = s; })
       .catch(() => setHeading(null));
-    // Re-render so "4m ago" keeps counting while they stand still.
-    const timer = setInterval(() => setTick(t => t + 1), 15_000);
+    // Re-render so "4m ago" keeps counting, and so a UWB reading that's gone
+    // quiet drops back to GPS within a few seconds.
+    const timer = setInterval(() => setTick(t => t + 1), 1_000);
     return () => {
       cancelled = true;
       sub?.remove();
@@ -60,8 +107,16 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
   const age = pinAge(member?.locationAt);
   // Standing where they were 40 minutes ago isn't "close".
   const close = distance != null && distance < CLOSE_RANGE_M && !age.stale;
+  // UWB wins while it's fresh: it's exact and already relative to the phone.
+  const precise = isFresh(uwb, Date.now());
+  const preciseAngle = precise ? uwbArrowDegrees(uwb!) : null;
+  const preciseHere = precise && uwb!.distance! < HERE_M;
   // No compass: point north-up so the arrow at least matches the compass label.
-  const target = bearing == null ? null : arrowAngle(bearing, heading ?? 0);
+  const gpsTarget = bearing == null ? null : arrowAngle(bearing, heading ?? 0);
+  const target = precise ? preciseAngle : gpsTarget;
+  const showArrow = precise ? preciseAngle != null && !preciseHere : hasFix && !close;
+  const showDot = precise ? !showArrow : close;
+  const arrived = precise ? preciseHere : close;
 
   useEffect(() => {
     if (target == null) return;
@@ -75,15 +130,21 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
   }, [target, rotation]);
 
   useEffect(() => {
-    if (close && !wasClose.current) hapticSuccess();
-    wasClose.current = close;
-  }, [close]);
+    if (arrived && !wasClose.current) hapticSuccess();
+    wasClose.current = arrived;
+  }, [arrived]);
 
   const spin = rotation.interpolate({ inputRange: [0, 360], outputRange: ['0deg', '360deg'] });
   const color = member?.color ?? Colors.primary;
 
   let status: string;
   if (!member) status = '';
+  else if (precise && preciseHere) status = `Right here. Look around for ${member.longName}.`;
+  else if (precise && preciseAngle != null) status = 'Precise. Hold your phone up in front of you and walk where the arrow points.';
+  else if (precise && converged === false) status = 'Move your phone slowly side to side to find the direction.';
+  else if (precise) status = uwbTrend === 'warmer' ? 'Getting closer. Keep going.'
+    : uwbTrend === 'colder' ? 'Getting further. Turn around.'
+    : 'Exact distance, but people are blocking the direction. Walk and watch the number.';
   else if (member.lat == null || member.lng == null) status = `No position from ${member.longName} yet. Their radio sends one once it has a GPS fix, which can take a few minutes outside.`;
   else if (!myLocation) status = 'Waiting for your GPS…';
   else if (age.stale) status = age.label === '?'
@@ -92,6 +153,9 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
   else if (close) status = `Within about ${CLOSE_RANGE_M} m. GPS can't get closer than this, so look around.`;
   else if (heading == null) status = `Compass unavailable. Head ${compassPoint(bearing!)}: the arrow shows north as up.`;
   else status = 'Hold your phone flat and walk where the arrow points.';
+
+  // Close on GPS but no UWB link: both phones need Find open on each other.
+  const suggestPrecise = canPrecise && !precise && distance != null && distance < SUGGEST_PRECISE_M && !age.stale;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -105,24 +169,34 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
 
         <View style={styles.body}>
           <View style={styles.dial}>
-            {hasFix && !close && (
-              <Animated.View style={[styles.arrowWrap, { opacity: age.stale ? 0.35 : 1, transform: [{ rotate: spin }] }]}>
+            {showArrow && (
+              <Animated.View style={[styles.arrowWrap, { opacity: !precise && age.stale ? 0.35 : 1, transform: [{ rotate: spin }] }]}>
                 <View style={[styles.arrowHead, { borderBottomColor: color }]} />
                 <View style={[styles.arrowShaft, { backgroundColor: color }]} />
               </Animated.View>
             )}
-            {close && <View style={[styles.closeDot, { backgroundColor: color }]} />}
+            {showDot && <View style={[styles.closeDot, { backgroundColor: color }]} />}
           </View>
 
-          {distance != null && (
+          {precise ? (
+            <Text style={styles.distance}>{formatPrecise(uwb!.distance!)}</Text>
+          ) : distance != null && (
             <Text style={styles.distance}>{close ? 'Close' : formatDistance(distance)}</Text>
           )}
-          {member?.lat != null && (
+          {precise ? (
+            <Text style={styles.precise}>Precise · Ultra Wideband</Text>
+          ) : member?.lat != null && (
             <Text style={[styles.age, age.stale && styles.ageStale]}>
               {age.label === 'now' ? 'Position from just now' : age.label === '?' ? 'Position time unknown' : `Position from ${age.label} ago`}
             </Text>
           )}
           <Text style={styles.status}>{status}</Text>
+          {suggestPrecise && (
+            <Text style={styles.hint}>
+              {uwbState === 'lost' ? 'Lost the precise signal. Keep walking toward them.'
+                : `For an exact arrow, ask ${member!.longName} to open Find on you too.`}
+            </Text>
+          )}
         </View>
 
         {member?.lat != null && (
@@ -160,6 +234,8 @@ const styles = StyleSheet.create({
   distance: { fontSize: 64, fontWeight: '800', color: Colors.textPrimary, fontVariant: ['tabular-nums'] },
   age: { fontSize: FontSize.md, color: Colors.textSecondary },
   ageStale: { color: Colors.warning },
+  precise: { fontSize: FontSize.md, color: Colors.success, fontWeight: '700' },
+  hint: { fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: 'center', maxWidth: 300 },
   status: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', marginTop: Spacing.sm, maxWidth: 320 },
   mapButton: {
     margin: Spacing.md, borderWidth: 1, borderColor: Colors.primary, borderRadius: BorderRadius.full,
