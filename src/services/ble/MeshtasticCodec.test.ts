@@ -314,3 +314,29 @@ describe('FromRadio encoder roundtrips', () => {
     expect(roundtripText).toBe(text);
   });
 });
+
+describe('encodePositionRequest', () => {
+  test('goes to one radio, asks for a reply, carries our position, and hops', async () => {
+    const { getField, varintOf, fixed32Of } = await import('./sim/wire');
+    const { encodePositionRequest, decodePosition: dp, MESSAGE_HOP_LIMIT } = await import('./MeshtasticCodec');
+    const ours = { latitudeI: 340866123, longitudeI: -1172917456, time: 1767254400 };
+    const bytes = encodePositionRequest(0x7ff333a8, 0xdbfc8747, ours, 0, 0x1234);
+
+    const packet = getField(bytes, 1)!.value;
+    expect(fixed32Of(getField(packet, 1))! >>> 0).toBe(0xdbfc8747);
+    expect(fixed32Of(getField(packet, 2))! >>> 0).toBe(0x7ff333a8);
+    expect(varintOf(getField(packet, 9))).toBe(MESSAGE_HOP_LIMIT);
+    expect(getField(packet, 10)).toBeUndefined(); // no want_ack: the reply is the answer
+
+    const data = getField(packet, 4)!.value;
+    expect(varintOf(getField(data, 1))).toBe(3); // POSITION_APP
+    expect(varintOf(getField(data, 3))).toBe(1); // want_response
+    const pos = dp(getField(data, 2)!.value);
+    expect([pos.latitudeI, pos.longitudeI]).toEqual([ours.latitudeI, ours.longitudeI]);
+  });
+
+  test('refuses a broadcast, which would make every radio answer', async () => {
+    const { encodePositionRequest } = await import('./MeshtasticCodec');
+    expect(() => encodePositionRequest(0xffffffff, 1, { latitudeI: 1, longitudeI: 1 })).toThrow();
+  });
+});

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, Animated, Easing, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
@@ -11,6 +11,8 @@ import { hapticSuccess } from '../../utils/haptics';
 import { useDeviceStore } from '../../store/useDeviceStore';
 import { capabilities, startPreciseFind, type RangeState } from '../../../modules/rndvu-nearby';
 import { formatPrecise, isFresh, trend, uwbArrowDegrees, type Trend, type UwbReading } from '../../utils/preciseFind';
+import { useFindStore } from '../../store/useFindStore';
+import { askToFind, cancelFind } from '../../services/find/FindController';
 
 interface Props {
   nodeId: number | null;
@@ -44,6 +46,23 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
   const wasClose = useRef(false);
   const visible = nodeId != null;
   const myNodeNum = useDeviceStore(s => s.myNodeNum);
+  // Find me: my request to this person, if any.
+  const outgoing = useFindStore(s => s.outgoing);
+  const asking = outgoing && outgoing.target === shownId.current ? outgoing : null;
+
+  // Closing Find ends the search and tells them to stop sharing.
+  useEffect(() => {
+    if (!visible) return;
+    return () => { cancelFind(); };
+  }, [visible]);
+
+  const handleAsk = async () => {
+    const target = shownId.current;
+    if (target == null) return;
+    if (!(await askToFind(target))) {
+      Alert.alert('Not connected', "Your radio isn't connected right now, so the request can't go out. Try again in a moment.");
+    }
+  };
 
   // Ultra Wideband, when both phones can do it.
   const [uwb, setUwb] = useState<UwbReading | null>(null);
@@ -154,8 +173,15 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
   else if (heading == null) status = `Compass unavailable. Head ${compassPoint(bearing!)}: the arrow shows north as up.`;
   else status = 'Hold your phone flat and walk where the arrow points.';
 
-  // Close on GPS but no UWB link: both phones need Find open on each other.
+  // Close on GPS but no UWB link yet.
   const suggestPrecise = canPrecise && !precise && distance != null && distance < SUGGEST_PRECISE_M && !age.stale;
+
+  let askStatus: string | null = null;
+  if (asking && member) {
+    if (asking.helping === true) askStatus = `${member.longName} is helping: their exact spot every 15 seconds.`;
+    else if (asking.helping === false) askStatus = `${member.longName} stopped sharing.`;
+    else askStatus = `Asked ${member.longName}. Their phone is buzzing, and their radio is sending its position.`;
+  }
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -194,10 +220,26 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
           {suggestPrecise && (
             <Text style={styles.hint}>
               {uwbState === 'lost' ? 'Lost the precise signal. Keep walking toward them.'
-                : `For an exact arrow, ask ${member!.longName} to open Find on you too.`}
+                : asking?.helping ? 'Getting close: your phones lock on for an exact arrow within about 10 m.'
+                : `For an exact arrow, ask ${member!.longName} to help.`}
             </Text>
           )}
         </View>
+
+        {member && !member.isSelf && (
+          asking ? (
+            <View style={styles.askRow}>
+              <Text style={[styles.askStatus, asking.helping === true && styles.askHelping]}>{askStatus}</Text>
+              <TouchableOpacity onPress={() => cancelFind()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={styles.askStop}>Stop</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={[styles.askButton, { backgroundColor: color }]} onPress={handleAsk}>
+              <Text style={styles.askButtonText}>Ask {member.longName} to help</Text>
+            </TouchableOpacity>
+          )
+        )}
 
         {member?.lat != null && (
           <TouchableOpacity style={styles.mapButton} onPress={() => nodeId != null && onShowOnMap(nodeId)}>
@@ -237,6 +279,12 @@ const styles = StyleSheet.create({
   precise: { fontSize: FontSize.md, color: Colors.success, fontWeight: '700' },
   hint: { fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: 'center', maxWidth: 300 },
   status: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', marginTop: Spacing.sm, maxWidth: 320 },
+  askButton: { marginHorizontal: Spacing.md, borderRadius: BorderRadius.full, paddingVertical: 16, alignItems: 'center' },
+  askButtonText: { color: '#ffffff', fontSize: FontSize.md, fontWeight: '800' },
+  askRow: { flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.md, gap: Spacing.md },
+  askStatus: { flex: 1, color: Colors.textSecondary, fontSize: FontSize.sm },
+  askHelping: { color: Colors.success, fontWeight: '700' },
+  askStop: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
   mapButton: {
     margin: Spacing.md, borderWidth: 1, borderColor: Colors.primary, borderRadius: BorderRadius.full,
     paddingVertical: 14, alignItems: 'center',
