@@ -22,11 +22,21 @@ export function formatClock(hour: number, minute: number): string {
   return `${hour12}:${minute.toString().padStart(2, '0')} ${ampm}`;
 }
 
-export function isOnline(lastHeardSeconds?: number, thresholdSeconds = 3600): boolean {
-  // 1-hour default — ~4x Meshtastic's position_broadcast_secs (900s) so we
-  // tolerate 2-3 consecutive RF-dropped broadcasts before flipping a quiet
-  // peer to offline. touchLastHeard fires on every received packet (incl.
-  // duplicates), so chatty peers stay online indefinitely.
+// One "in range" cutoff for the whole app: the card dot, the header count, the
+// sort and the crew strip. (The dot used to allow an hour while the strip said
+// 30 minutes, so they contradicted each other.)
+//
+// What a radio actually sends on firmware 2.7.26 with RNDVU's setup: battery
+// every 30 min (the most frequent), position every 60 min when standing still
+// (after ~100 m when moving), NodeInfo every 3 h. So 30 minutes of silence is
+// normal, and one lost battery packet makes a 60-minute gap. 65 minutes rides
+// out one lost packet without calling a quiet friend gone. Tighten this only
+// if the radios are set to report more often.
+export const IN_RANGE_SECS = 65 * 60;
+
+export function isOnline(lastHeardSeconds?: number, thresholdSeconds = IN_RANGE_SECS): boolean {
+  // touchLastHeard fires on every received packet (incl. duplicates), so
+  // chatty peers stay online indefinitely.
   if (!lastHeardSeconds) return false;
   return Date.now() / 1000 - lastHeardSeconds < thresholdSeconds;
 }
