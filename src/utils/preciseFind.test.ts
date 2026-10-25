@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { formatPrecise, isFresh, trend, uwbArrowDegrees, UWB_FRESH_MS } from './preciseFind';
+import { formatPrecise, isFresh, lockedRangingSupported, trend, uwbArrowDegrees, UWB_FRESH_MS } from './preciseFind';
 
 describe('preciseFind', () => {
   test('a reading is used only while fresh and with a distance', () => {
@@ -21,6 +21,14 @@ describe('preciseFind', () => {
     expect(trend(5, 4.8)).toBe('steady');
     expect(trend(5, 4)).toBe('warmer');
     expect(trend(4, 5)).toBe('colder');
+  });
+
+  test('locked-phone ranging needs iOS 18.4', () => {
+    expect(lockedRangingSupported('18.4')).toBe(true);
+    expect(lockedRangingSupported('18.4.1')).toBe(true);
+    expect(lockedRangingSupported('19.0')).toBe(true);
+    expect(lockedRangingSupported('18.3.2')).toBe(false);
+    expect(lockedRangingSupported('17.6')).toBe(false);
   });
 
   test('distance shows decimals up close', () => {

@@ -34,6 +34,15 @@ export function trend(previous: number | undefined, current: number): Trend {
   return 'steady';
 }
 
+/**
+ * iOS 18.4 added UWB ranging in the background while a Live Activity runs.
+ * Before that, locking the phone pauses it. `version` is Platform.Version.
+ */
+export function lockedRangingSupported(version: string | number): boolean {
+  const [major, minor] = String(version).split('.').map(n => parseInt(n, 10) || 0);
+  return major > 18 || (major === 18 && minor >= 4);
+}
+
 /** "3.4 m" up close, whole metres further out. */
 export function formatPrecise(m: number): string {
   return m < 10 ? `${m.toFixed(1)} m` : `${Math.round(m)} m`;

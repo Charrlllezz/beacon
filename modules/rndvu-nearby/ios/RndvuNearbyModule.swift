@@ -1,6 +1,8 @@
+import ActivityKit
 import ExpoModulesCore
 import MultipeerConnectivity
 import NearbyInteraction
+import UIKit
 
 // Ultra Wideband "precise find" between two RNDVU phones, like Find My's
 // "Find Nearby": exact distance and, when the phones can see each other,
@@ -12,6 +14,11 @@ import NearbyInteraction
 // Wi-Fi), whose range is about the same as UWB's. Each phone advertises
 // "I'm <my node> looking for <their node>" and only pairs with the one
 // person it's looking for, who must be looking for it too.
+//
+// With an activity title, it also shows a Live Activity (lock screen and
+// Dynamic Island) and updates it from here, not from JS: on iOS 18.4+ a Live
+// Activity started before the app goes to the background keeps UWB ranging
+// while the phone is locked, and JS is paused then.
 
 public class RndvuNearbyModule: Module {
   private var finder: NearbyFinder?
@@ -34,9 +41,9 @@ public class RndvuNearbyModule: Module {
       return ["distance": ok, "direction": ok, "cameraAssist": false]
     }
 
-    AsyncFunction("start") { (myNodeId: Int, peerNodeId: Int) in
+    AsyncFunction("start") { (myNodeId: Int, peerNodeId: Int, activityTitle: String?, role: String?) in
       self.finder?.stop()
-      let finder = NearbyFinder(me: myNodeId, peer: peerNodeId) { [weak self] payload in
+      let finder = NearbyFinder(me: myNodeId, peer: peerNodeId, activityTitle: activityTitle, role: role ?? "finder") { [weak self] payload in
         self?.sendEvent("onRange", payload)
       }
       self.finder = finder
@@ -60,9 +67,19 @@ final class NearbyFinder: NSObject {
   // Must match NSBonjourServices in app.json.
   static let serviceType = "rndvu-ni"
 
+  // A search never runs longer than this, even if JS never says stop (it
+  // may be paused for the whole time on a locked phone).
+  static let maxDuration: TimeInterval = 10 * 60
+
   private let me: Int
   private let peer: Int
+  private let activityTitle: String?
+  private let role: String
   private let emit: ([String: Any]) -> Void
+  private var activity: Any?  // Activity<RndvuFindAttributes> on iOS 16.2+
+  private var lastActivityUpdate = Date.distantPast
+  private var lastActivityStatus = ""
+  private var autoStop: DispatchWorkItem?
 
   private var ni: NISession?
   private var peerConfig: NINearbyPeerConfiguration?
@@ -72,9 +89,11 @@ final class NearbyFinder: NSObject {
   private let browser: MCNearbyServiceBrowser
   private var running = false
 
-  init(me: Int, peer: Int, emit: @escaping ([String: Any]) -> Void) {
+  init(me: Int, peer: Int, activityTitle: String?, role: String, emit: @escaping ([String: Any]) -> Void) {
     self.me = me
     self.peer = peer
+    self.activityTitle = activityTitle
+    self.role = role
     self.emit = emit
     peerID = MCPeerID(displayName: String(me))
     mc = MCSession(peer: peerID, securityIdentity: nil, encryptionPreference: .required)
@@ -90,12 +109,33 @@ final class NearbyFinder: NSObject {
     browser.delegate = self
   }
 
+  // Low Power Mode or under 20%: skip UWB and the Live Activity. The search
+  // still works on GPS; someone else's search shouldn't drain a low phone.
+  static func batteryAllows() -> Bool {
+    if ProcessInfo.processInfo.isLowPowerModeEnabled { return false }
+    UIDevice.current.isBatteryMonitoringEnabled = true
+    let level = UIDevice.current.batteryLevel // -1 when unknown
+    return level < 0 || level >= 0.2
+  }
+
   func start() {
     guard NISession.isSupported else {
       emit(["state": "unsupported"])
       return
     }
+    guard NearbyFinder.batteryAllows() else {
+      emit(["state": "lowPower"])
+      return
+    }
     running = true
+    if activityTitle != nil { startActivity() }
+    let stopper = DispatchWorkItem { [weak self] in
+      guard let self = self, self.running else { return }
+      self.emit(["state": "ended"])
+      self.stop()
+    }
+    autoStop = stopper
+    DispatchQueue.main.asyncAfter(deadline: .now() + NearbyFinder.maxDuration, execute: stopper)
     let session = NISession()
     session.delegate = self
     ni = session
@@ -106,12 +146,45 @@ final class NearbyFinder: NSObject {
 
   func stop() {
     running = false
+    autoStop?.cancel()
+    autoStop = nil
+    endActivity()
     advertiser.stopAdvertisingPeer()
     browser.stopBrowsingForPeers()
     mc.disconnect()
     ni?.invalidate()
     ni = nil
     peerConfig = nil
+  }
+
+  // MARK: Live Activity
+
+  private func startActivity() {
+    guard #available(iOS 16.2, *), let title = activityTitle else { return }
+    guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+    let attributes = RndvuFindAttributes(title: title, role: role)
+    let state = RndvuFindAttributes.ContentState(distance: nil, status: "searching")
+    let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(NearbyFinder.maxDuration))
+    activity = try? Activity.request(attributes: attributes, content: content, pushType: nil)
+  }
+
+  // At most once a second, except when the status changes.
+  fileprivate func updateActivity(distance: Double?, status: String) {
+    guard #available(iOS 16.2, *) else { return }
+    guard let activity = activity as? Activity<RndvuFindAttributes> else { return }
+    let now = Date()
+    if status == lastActivityStatus && now.timeIntervalSince(lastActivityUpdate) < 1 { return }
+    lastActivityUpdate = now
+    lastActivityStatus = status
+    let state = RndvuFindAttributes.ContentState(distance: distance, status: status)
+    Task { await activity.update(ActivityContent(state: state, staleDate: nil)) }
+  }
+
+  private func endActivity() {
+    guard #available(iOS 16.2, *) else { return }
+    guard let activity = activity as? Activity<RndvuFindAttributes> else { return }
+    self.activity = nil
+    Task { await activity.end(nil, dismissalPolicy: .immediate) }
   }
 
   private func sendToken() {
@@ -165,6 +238,7 @@ extension NearbyFinder: NISessionDelegate {
       payload["azimuth"] = Double(azimuth)
     }
     emit(payload)
+    updateActivity(distance: object.distance.map { Double($0) }, status: "ranging")
   }
 
   func session(_ session: NISession, didRemove nearbyObjects: [NINearbyObject], reason: NINearbyObject.RemovalReason) {
@@ -174,6 +248,7 @@ extension NearbyFinder: NISessionDelegate {
     case .timeout:
       // Out of range or blocked: keep trying with the same peer.
       emit(["state": "lost"])
+      updateActivity(distance: nil, status: "lost")
       if let config = peerConfig { session.run(config) }
     @unknown default:
       emit(["state": "lost"])
@@ -181,7 +256,10 @@ extension NearbyFinder: NISessionDelegate {
   }
 
   func sessionWasSuspended(_ session: NISession) {
+    // Before iOS 18.4 (or without the Live Activity) a locked phone pauses
+    // UWB; the activity says to open RNDVU.
     emit(["state": "suspended"])
+    updateActivity(distance: nil, status: "paused")
   }
 
   func sessionSuspensionEnded(_ session: NISession) {

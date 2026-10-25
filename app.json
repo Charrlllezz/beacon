@@ -15,6 +15,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.charlesapps.rndvu",
+      "appleTeamId": "7K8KA335HS",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "RNDVU uses Bluetooth to connect to your mesh device and communicate with your crew.",
         "NSBluetoothPeripheralUsageDescription": "RNDVU uses Bluetooth to connect to your mesh device.",
@@ -26,8 +27,10 @@
           "_rndvu-ni._tcp",
           "_rndvu-ni._udp"
         ],
+        "NSSupportsLiveActivities": true,
         "UIBackgroundModes": [
-          "bluetooth-central"
+          "bluetooth-central",
+          "nearby-interaction"
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
@@ -36,6 +39,7 @@
       }
     },
     "plugins": [
+      "@bacons/apple-targets",
       [
         "react-native-ble-plx",
         {

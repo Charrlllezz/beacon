@@ -49,6 +49,7 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
   // Find me: my request to this person, if any.
   const outgoing = useFindStore(s => s.outgoing);
   const asking = outgoing && outgoing.target === shownId.current ? outgoing : null;
+  const searching = !!asking;
 
   // Closing Find ends the search and tells them to stop sharing.
   useEffect(() => {
@@ -75,6 +76,7 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
   useEffect(() => {
     const peer = shownId.current;
     if (!visible || !canPrecise || !myNodeNum || peer == null) return;
+    const name = useCrewStore.getState().crewMembers[peer]?.longName ?? 'your crew';
     const stop = startPreciseFind(myNodeNum, peer, e => {
       setUwbState(e.state);
       if (e.converged !== undefined) setConverged(e.converged);
@@ -89,7 +91,9 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
         setUwbTrend(trend(base.d, e.distance));
         trendBase.current = { d: e.distance, at: now };
       }
-    });
+    // Lock-screen distance only during a real search (after Ask), not every
+    // time someone glances at the arrow.
+    }, searching ? { title: `Finding ${name}`, role: 'finder' } : undefined);
     return () => {
       stop?.();
       setUwb(null);
@@ -98,7 +102,7 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
       setUwbTrend('steady');
       trendBase.current = null;
     };
-  }, [visible, nodeId, myNodeNum, canPrecise]);
+  }, [visible, nodeId, myNodeNum, canPrecise, searching]);
 
   // Compass only while the sheet is open; it costs battery.
   useEffect(() => {

@@ -15,6 +15,8 @@ Pod::Spec.new do |s|
 
   s.dependency 'ExpoModulesCore'
   s.frameworks = 'NearbyInteraction', 'MultipeerConnectivity'
+  # The app still runs on iOS 15.1; Live Activities need 16.2.
+  s.weak_frameworks = 'ActivityKit'
 
   s.source_files = "**/*.{h,m,swift}"
   s.pod_target_xcconfig = {
