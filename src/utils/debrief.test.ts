@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { debriefStats, formatDebrief, shouldOfferDebrief, festivalWindow } from './debrief';
+import { debriefStats, formatDebrief, shouldOfferDebrief, festivalWindow, debriefTarget } from './debrief';
 import type { FestivalConfig } from '../types/festival';
 import type { Message } from '../types/messages';
 import type { CrewMember } from '../types/crew';
@@ -73,5 +73,22 @@ describe('formatDebrief', () => {
     expect(text).toContain('Confusing: (nothing)');
     expect(text).toContain('- Sent 6 (1 failed), received 2');
     expect(text).toContain('- Radio battery now: USB');
+  });
+});
+
+describe('debriefTarget', () => {
+  const bw = {
+    festival: { ...config.festival, id: 'beyond-wonderland-2027', dates: { start: '2027-03-26T00:00:00-07:00', end: '2027-03-28T00:00:00-07:00' } },
+  } as FestivalConfig;
+
+  test('stays on Countdown after the app switches to BW', () => {
+    const jan3 = new Date('2027-01-03T12:00:00-08:00').getTime();
+    expect(debriefTarget([config, bw], jan3)?.festival.id).toBe('countdown-nye-2026');
+    expect(shouldOfferDebrief(config, jan3)).toBe(true);
+  });
+
+  test('moves to BW once BW begins, and is null before anything', () => {
+    expect(debriefTarget([config, bw], new Date('2027-03-27T12:00:00-07:00').getTime())?.festival.id).toBe('beyond-wonderland-2027');
+    expect(debriefTarget([config, bw], new Date('2026-11-01T00:00:00-08:00').getTime())).toBeNull();
   });
 });
