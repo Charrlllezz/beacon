@@ -22,11 +22,16 @@ export function formatClock(hour: number, minute: number): string {
   return `${hour12}:${minute.toString().padStart(2, '0')} ${ampm}`;
 }
 
-export function isOnline(lastHeardSeconds?: number, thresholdSeconds = 3600): boolean {
-  // 1-hour default — ~4x Meshtastic's position_broadcast_secs (900s) so we
-  // tolerate 2-3 consecutive RF-dropped broadcasts before flipping a quiet
-  // peer to offline. touchLastHeard fires on every received packet (incl.
-  // duplicates), so chatty peers stay online indefinitely.
+// One "in range" cutoff for the whole app: the card dot, the header count, the
+// sort and the crew strip. A radio that's still around sends a position every
+// ~15 minutes and a battery report every 30, so 30 minutes of silence means
+// out of range, off or flat. (The dot used to allow an hour while the strip
+// said 30 minutes, so a dead radio stayed green next to "5 of 6 in range".)
+export const IN_RANGE_SECS = 30 * 60;
+
+export function isOnline(lastHeardSeconds?: number, thresholdSeconds = IN_RANGE_SECS): boolean {
+  // touchLastHeard fires on every received packet (incl. duplicates), so
+  // chatty peers stay online indefinitely.
   if (!lastHeardSeconds) return false;
   return Date.now() / 1000 - lastHeardSeconds < thresholdSeconds;
 }

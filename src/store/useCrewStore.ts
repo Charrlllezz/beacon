@@ -67,7 +67,9 @@ export const useCrewStore = create<CrewState>((set, get) => ({
       // NodeInfo; without this gate, all of them became "crew" (the 35+ random
       // nodes). Only create when the node was heard recently (live RNDVU
       // traffic). Already-known members are always enriched/updated below.
-      if (!existing && partial.lastHeard !== undefined && !isOnline(partial.lastHeard)) {
+      // An hour here, not the in-range cutoff: this only decides who joins
+      // the list, not who shows as in range.
+      if (!existing && partial.lastHeard !== undefined && !isOnline(partial.lastHeard, 3600)) {
         return state;
       }
       return {
