@@ -115,3 +115,23 @@ describe('PacketRouter onMeshMessage', () => {
     off1(); off2();
   });
 });
+
+describe('PacketRouter nodeInfo replay', () => {
+  test("a stored record without battery or name doesn't wipe what we know", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const FRIEND = 0x0badf00d;
+    useCrewStore.getState().upsertMember({
+      nodeId: FRIEND, longName: 'Sam', shortName: 'SAM', lastHeard: now, batteryLevel: 6,
+    });
+    // On reconnect the radio replays its node DB: an older last-heard, no
+    // battery, and (for a peer it never got NodeInfo from) no name.
+    routeFromRadio({ nodeInfo: { num: FRIEND, lastHeard: now - 3000 } } as FromRadio, ME);
+
+    const sam = useCrewStore.getState().crewMembers[FRIEND];
+    expect(sam.batteryLevel).toBe(6);
+    expect(sam.longName).toBe('Sam');
+    expect(sam.shortName).toBe('SAM');
+    expect(sam.lastHeard).toBe(now);
+    expect(sam.isOnline).toBe(true);
+  });
+});
