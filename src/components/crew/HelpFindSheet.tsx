@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Pressable } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, Pressable, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
 import { useFindStore } from '../../store/useFindStore';
@@ -7,7 +7,9 @@ import { useDeviceStore } from '../../store/useDeviceStore';
 import { useCrewStore } from '../../store/useCrewStore';
 import { stopHelping, HELP_MS } from '../../services/find/FindController';
 import { startPreciseFind } from '../../../modules/rndvu-nearby';
-import { formatPrecise } from '../../utils/preciseFind';
+import { formatPrecise, lockedRangingSupported } from '../../utils/preciseFind';
+
+const CAN_LOCK = lockedRangingSupported(Platform.Version);
 
 // Light-up flashes the screen between your crew colour and white, so a friend
 // scanning the crowd can spot the phone you hold up. Twice a second is easy
@@ -38,10 +40,11 @@ export default function HelpFindSheet() {
 
   useEffect(() => {
     if (finder === null || !myNodeNum) return;
+    const name = useFindStore.getState().helping?.finderName ?? 'Your crew';
     const stop = startPreciseFind(myNodeNum, finder, e => {
       if (e.distance !== undefined) setDistance(e.distance);
       else if (e.state === 'lost' || e.state === 'ended') setDistance(null);
-    });
+    }, { title: `${name} is finding you`, role: 'helper' });
     return () => { stop?.(); setDistance(null); setLightUp(false); };
   }, [finder, myNodeNum]);
 
@@ -73,7 +76,9 @@ export default function HelpFindSheet() {
             <Text style={styles.lead}>
               {distance !== null
                 ? 'They\'re close. Light up your screen so they can spot you.'
-                : `Keep RNDVU open. When ${helping.finderName} gets close, your phones measure the exact distance.`}
+                : CAN_LOCK
+                  ? `When ${helping.finderName} gets close, your phones measure the exact distance. You can lock your phone: it keeps going on your lock screen.`
+                  : `When ${helping.finderName} gets close, your phones measure the exact distance. Keep RNDVU open for that; your spot still goes out if you lock it.`}
             </Text>
             <TouchableOpacity style={[styles.lightButton, { backgroundColor: myColor }]} onPress={() => setLightUp(true)}>
               <Text style={styles.lightButtonText}>Light up my screen</Text>

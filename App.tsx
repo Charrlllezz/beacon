@@ -37,7 +37,7 @@ import {
   findRequestFromResponse,
 } from './src/services/notifications/LocalNotifications';
 import * as Notifications from 'expo-notifications';
-import { tickFind, startHelping } from './src/services/find/FindController';
+import { tickFind, startHelping, stopHelping, cancelFind } from './src/services/find/FindController';
 import { useFindStore } from './src/store/useFindStore';
 import HelpFindSheet from './src/components/crew/HelpFindSheet';
 import { reminderActions } from './src/services/notifications/meetupReminderSync';
@@ -298,6 +298,13 @@ export default function App() {
   useEffect(() => {
     if (isLoading) return;
     const handle = (url: string | null) => {
+      // "Stop" on the Find me lock-screen activity: end my search and any
+      // sharing. (Plain rndvu://find just opens the app.)
+      if (url?.toLowerCase().startsWith('rndvu://find/stop')) {
+        cancelFind();
+        stopHelping();
+        return;
+      }
       if (!url || !url.toLowerCase().startsWith('rndvu://join')) return;
       if (!onboardingComplete) {
         Alert.alert('Set up first', "Finish connecting your radio, then choose Join with a QR and scan the invite again.");
