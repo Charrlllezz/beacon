@@ -57,8 +57,9 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
   const hasFix = !!myLocation && member?.lat != null && member?.lng != null;
   const distance = hasFix ? haversineDistance(myLocation!.lat, myLocation!.lng, member!.lat!, member!.lng!) : null;
   const bearing = hasFix ? bearingDegrees(myLocation!.lat, myLocation!.lng, member!.lat!, member!.lng!) : null;
-  const close = distance != null && distance < CLOSE_RANGE_M;
   const age = pinAge(member?.locationAt);
+  // Standing where they were 40 minutes ago isn't "close".
+  const close = distance != null && distance < CLOSE_RANGE_M && !age.stale;
   // No compass: point north-up so the arrow at least matches the compass label.
   const target = bearing == null ? null : arrowAngle(bearing, heading ?? 0);
 
@@ -85,8 +86,10 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
   if (!member) status = '';
   else if (member.lat == null || member.lng == null) status = `No position from ${member.longName} yet. Their radio sends one once it has a GPS fix, which can take a few minutes outside.`;
   else if (!myLocation) status = 'Waiting for your GPS…';
+  else if (age.stale) status = age.label === '?'
+    ? "This position is old. They've probably moved since."
+    : `This is where they were ${age.label} ago. They've probably moved since.`;
   else if (close) status = `Within about ${CLOSE_RANGE_M} m. GPS can't get closer than this, so look around.`;
-  else if (age.stale) status = `This is where they were ${age.label} ago. They've probably moved since.`;
   else if (heading == null) status = `Compass unavailable. Head ${compassPoint(bearing!)}: the arrow shows north as up.`;
   else status = 'Hold your phone flat and walk where the arrow points.';
 
@@ -116,7 +119,7 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
           )}
           {member?.lat != null && (
             <Text style={[styles.age, age.stale && styles.ageStale]}>
-              {age.label === 'now' ? 'Position from just now' : `Position from ${age.label} ago`}
+              {age.label === 'now' ? 'Position from just now' : age.label === '?' ? 'Position time unknown' : `Position from ${age.label} ago`}
             </Text>
           )}
           <Text style={styles.status}>{status}</Text>

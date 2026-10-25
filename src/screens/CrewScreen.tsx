@@ -53,13 +53,12 @@ const CrewMemberCard = memo(({ member, myLocation, onFind, watchingStatus, locat
   const initials = member.shortName.slice(0, 2).toUpperCase();
   const lowBattery = member.batteryLevel !== undefined && member.batteryLevel <= BATTERY_CRITICAL;
   const signal = signalBars(member.snr);
-  const hasLocation = member.lat !== undefined && member.lng !== undefined;
 
   return (
     <TouchableOpacity
       style={[styles.card, lowBattery && styles.cardLowBattery]}
-      onPress={() => hasLocation && onFind(member.nodeId)}
-      activeOpacity={hasLocation ? 0.7 : 1}
+      onPress={() => onFind(member.nodeId)}
+      activeOpacity={0.7}
     >
       <View style={[styles.avatar, online && styles.avatarOnline, member.color && { borderColor: member.color }]}>
         <Text style={member.emoji ? styles.avatarEmoji : styles.avatarText}>
