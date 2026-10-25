@@ -13,9 +13,10 @@ import { useCrewStore } from '../../store/useCrewStore';
 import { useDeviceStore } from '../../store/useDeviceStore';
 import { bleService } from '../../services/ble/BleManager';
 import {
-  debriefStats, formatDebrief,
+  debriefStats, formatDebrief, debriefTarget,
   type DebriefAnswers, type Delivery, type PhoneBattery, type WouldPay,
 } from '../../utils/debrief';
+import { BUNDLED_FESTIVALS } from '../../services/festival/festivals';
 
 const doneKey = (festivalId: string) => `rndvu_debrief_${festivalId}`;
 
@@ -65,7 +66,11 @@ function Choice<T extends string>({ value, options, onChange }: {
 export default function EndTripSheet() {
   const open = useEndTripStore(s => s.open);
   const close = () => useEndTripStore.getState().setOpen(false);
-  const config = festivalConfig.getConfig();
+  // The festival just attended, not necessarily the active one (debriefTarget).
+  const config = useMemo(
+    () => debriefTarget(BUNDLED_FESTIVALS, Date.now()) ?? festivalConfig.getConfig(),
+    [open],
+  );
   const messages = useMessagesStore(s => s.messages);
   const crewMembers = useCrewStore(s => s.crewMembers);
   const myNodeNum = useDeviceStore(s => s.myNodeNum);

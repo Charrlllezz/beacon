@@ -75,6 +75,11 @@ export default function App() {
     if (AppState.currentState !== 'active') return;
     useOfflineMapStore.getState().ensure(festivalConfig.getConfig());
   }, [activeFestivalId]);
+
+  // Lineup picks belong to one festival; a new festival starts with none.
+  useEffect(() => {
+    loadMyGoingPicks(activeFestivalId);
+  }, [activeFestivalId]);
   const unsubRef = useRef<{ packet?: () => void; status?: () => void; notify?: () => void }>({});
   const gpsSubRef = useRef<Location.LocationSubscription | null>(null);
 
@@ -128,7 +133,6 @@ export default function App() {
     loadMyColor();
     loadCrewMembers();
     loadTags();
-    loadMyGoingPicks();
     useFestivalStore.getState().loadOverride();
     useCrewKeyStore.getState().load();
     // Re-pick the festival on the first phone GPS fix (location can narrow
