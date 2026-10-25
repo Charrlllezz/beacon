@@ -24,8 +24,8 @@ import type { Stage } from '../types/festival';
 import { useEndTripStore, debriefHandled, skipDebrief } from '../components/debrief/EndTripSheet';
 import { shouldOfferDebrief, debriefTarget } from '../utils/debrief';
 import { BUNDLED_FESTIVALS } from '../services/festival/festivals';
-import CrewKeyCard from '../components/crew/CrewKeyCard';
 import { useNow } from '../utils/useNow';
+import CrewKeyCard from '../components/crew/CrewKeyCard';
 
 const BATTERY_CRITICAL = 15;
 
