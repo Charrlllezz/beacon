@@ -15,6 +15,11 @@ let handlerSet = false;
 export function configureNotifications(): void {
   if (handlerSet) return;
   handlerSet = true;
+  // "Ash is looking for you": one tap opens RNDVU and starts helping.
+  Notifications.setNotificationCategoryAsync(FIND_REQUEST, [
+    { identifier: FIND_HELP_ACTION, buttonTitle: 'Help them find me', options: { opensAppToForeground: true } },
+    { identifier: FIND_NOT_NOW_ACTION, buttonTitle: 'Not now', options: { opensAppToForeground: false } },
+  ]).catch((e) => console.warn('find category failed:', e));
   Notifications.setNotificationHandler({
     handleNotification: async (n) => {
       // A meetup reminder is the one thing worth a banner while the app is
@@ -31,6 +36,41 @@ export function configureNotifications(): void {
 }
 
 const MEETUP_REMINDER = 'meetup-reminder';
+
+export const FIND_REQUEST = 'find-request';
+export const FIND_HELP_ACTION = 'find-help';
+export const FIND_NOT_NOW_ACTION = 'find-not-now';
+const findRequestId = (finder: number) => `find-${finder}`;
+
+/**
+ * "Ash is looking for you", time-sensitive so it gets through Focus. A
+ * reminder replaces the first one rather than stacking.
+ */
+export function notifyFindRequest(finder: number, finderName: string): void {
+  Notifications.scheduleNotificationAsync({
+    identifier: findRequestId(finder),
+    content: {
+      title: `${finderName} is looking for you`,
+      body: 'Tap to help them find you. Your phone shares your exact spot for 10 minutes.',
+      sound: 'default',
+      interruptionLevel: 'timeSensitive',
+      categoryIdentifier: FIND_REQUEST,
+      data: { type: FIND_REQUEST, finder, finderName },
+    },
+    trigger: null,
+  }).catch((e) => console.warn('find notification failed:', e));
+}
+
+export function clearFindRequest(finder: number): void {
+  Notifications.dismissNotificationAsync(findRequestId(finder)).catch(() => {});
+}
+
+/** What a tap on a notification asks for, if it's a find request. */
+export function findRequestFromResponse(r: Notifications.NotificationResponse | null): { finder: number; finderName: string; help: boolean } | null {
+  const data = r?.notification.request.content.data as { type?: string; finder?: number; finderName?: string } | undefined;
+  if (!r || data?.type !== FIND_REQUEST || typeof data.finder !== 'number') return null;
+  return { finder: data.finder, finderName: data.finderName ?? 'Your crew', help: r.actionIdentifier !== FIND_NOT_NOW_ACTION };
+}
 const reminderId = (meetupId: string) => `meetup-${meetupId}`;
 
 /**

@@ -12,6 +12,7 @@ import {
   encodeFactoryReset,
   encodeSetPositionConfig,
   encodeSetTelemetryConfig,
+  encodePositionRequest,
 } from './MeshtasticCodec';
 import { MockFirmware, COMMIT_REBOOT_SECONDS } from './MockFirmware';
 import type { VirtualPeer } from './MockPeers';
@@ -110,6 +111,13 @@ export class MockBleManager {
     const bytes = encodeToRadio(0xffffffff, text, this.firmware.myNodeNum, channelIndex, { id, replyId: opts.replyId });
     this.firmware.handleToRadio(bytes);
     return id;
+  }
+
+  async requestPosition(to: number, ours: { lat: number; lng: number }, channelIndex = 0): Promise<void> {
+    if (!this.isConnected) throw new Error('Not connected');
+    await delay(50);
+    const position = { latitudeI: Math.round(ours.lat * 1e7), longitudeI: Math.round(ours.lng * 1e7), time: Math.floor(Date.now() / 1000) };
+    this.firmware.handleToRadio(encodePositionRequest(to, this.firmware.myNodeNum, position, channelIndex, newPacketId()));
   }
 
   async setOwner(longName: string, shortName: string): Promise<void> {

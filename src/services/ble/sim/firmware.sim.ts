@@ -274,6 +274,27 @@ describe(`RNDVU against meshtasticd ${FLEET_FIRMWARE} (sim)`, () => {
     expect(mesh.air.some(p => p.from === a && p.to === mesh.nodeNum('b') && p.portnum === PortNum.POSITION_APP)).toBe(true);
   });
 
+  test("Find me: the app's position request gets the other radio's position, at most once per 3 minutes", async () => {
+    // Runs after the test above, which gave b a position from its phone.
+    const a = mesh.nodeNum('a');
+    const b = mesh.nodeNum('b');
+    const replyFromB = (mark: number) => since(mark).find(p =>
+      p.packet?.from === b && p.packet.to === a && p.packet.decoded?.portnum === PortNum.POSITION_APP);
+    const nos = { lat: 34.0866123, lng: -117.2917456 };
+
+    const mark = packets.length;
+    await mgr.requestPosition(b, nos);
+    await mesh.waitFor(() => replyFromB(mark) !== undefined, 60000, "b's answer in the app on a");
+    const pos = decodePosition(replyFromB(mark)!.packet!.decoded!.payload);
+    expect([pos.latitudeI, pos.longitudeI]).toEqual([340870000, -1172910000]);
+
+    // The firmware answers a radio's position requests once per 3 minutes.
+    const mark2 = packets.length;
+    await mgr.requestPosition(b, nos);
+    await new Promise(r => setTimeout(r, 20000));
+    expect(replyFromB(mark2)).toBeUndefined();
+  }, 120000);
+
   // Last: it moves c to its own crew key.
   test('Model 2: a crew key written at pairing comes back in the config drain (what adopting a shipped radio reads)', async () => {
     const crewKey = Uint8Array.from({ length: 32 }, (_, i) => (i * 53 + 7) & 0xff);
