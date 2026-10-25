@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { View, TextInput, TouchableOpacity, Text, StyleSheet, Platform, Keyboard } from 'react-native';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
 import { hapticLight } from '../../utils/haptics';
+import { MAX_MESSAGE_BYTES, bytesLeft, utf8Length } from '../../utils/textBytes';
 
 interface Props {
-  onSend: (text: string) => void;
+  // false: not taken (e.g. radio not ready), so keep the text.
+  onSend: (text: string) => boolean | void;
   onQuickAction: () => void;
   disabled?: boolean;
 }
@@ -17,9 +19,16 @@ export default function ChatInput({ onSend, onQuickAction, disabled }: Props) {
     const trimmed = text.trim();
     if (!trimmed || disabled) return;
     hapticLight();
-    onSend(trimmed);
-    setText('');
+    if (onSend(trimmed) !== false) setText('');
   }
+
+  function handleChange(next: string) {
+    // Refuse input past what the radio can carry (bytes, see textBytes.ts).
+    if (utf8Length(next) > MAX_MESSAGE_BYTES && next.length > text.length) return;
+    setText(next);
+  }
+
+  const left = bytesLeft(text);
 
   function handleDismissKeyboard() {
     hapticLight();
@@ -50,19 +59,24 @@ export default function ChatInput({ onSend, onQuickAction, disabled }: Props) {
       <TextInput
         style={styles.input}
         value={text}
-        onChangeText={setText}
+        onChangeText={handleChange}
         placeholder={disabled ? 'Reconnecting…' : 'Message your crew…'}
         placeholderTextColor={Colors.textMuted}
         multiline
-        maxLength={200}
         returnKeyType="send"
-        blurOnSubmit={false}
+        // Return sends. With multiline, blurOnSubmit={false} meant "newline",
+        // so the keyboard's Send key never sent.
+        submitBehavior="submit"
         onSubmitEditing={handleSend}
         editable={!disabled}
         keyboardAppearance="dark"
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}
       />
+
+      {left !== null && (
+        <Text style={[styles.counter, left <= 0 && styles.counterFull]}>{Math.max(left, 0)}</Text>
+      )}
 
       <TouchableOpacity
         style={[styles.sendBtn, (!text.trim() || disabled) && styles.sendBtnDisabled]}
@@ -76,6 +90,8 @@ export default function ChatInput({ onSend, onQuickAction, disabled }: Props) {
 }
 
 const styles = StyleSheet.create({
+  counter: { color: Colors.textSecondary, fontSize: FontSize.xs, marginHorizontal: Spacing.xs, alignSelf: 'center' },
+  counterFull: { color: Colors.warning },
   container: {
     flexDirection: 'row',
     alignItems: 'flex-end',

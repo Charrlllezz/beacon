@@ -39,6 +39,7 @@ interface CrewState {
   updateSnr: (nodeId: number, snr: number) => void;
   touchLastHeard: (nodeId: number, lastHeardSeconds: number) => void;
   setMyLocation: (lat: number, lng: number, fromPhone?: boolean) => void;
+  releasePhoneLocation: () => void;
   setMyColor: (color: string) => void;
   loadMyColor: () => Promise<void>;
   loadCrewMembers: () => Promise<void>;
@@ -166,6 +167,11 @@ export const useCrewStore = create<CrewState>((set, get) => ({
         myLocationIsPhone: fromPhone ? true : state.myLocationIsPhone,
       };
     }),
+
+  // Phone GPS stopped (app in the background). Let the radio's own position
+  // update myLocation again; otherwise an SOS repeating from a locked phone
+  // kept sending where the phone was when it was locked.
+  releasePhoneLocation: () => set({ myLocationIsPhone: false }),
 
   setMyColor: (color) => {
     set((state) => {
