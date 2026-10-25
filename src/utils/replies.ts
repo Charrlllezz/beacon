@@ -16,6 +16,9 @@ export function respondersTo(messages: Message[], packetId: number | undefined):
   const latest = new Map<number, Responder>();
   for (const m of messages) {
     if (m.type !== 'reply' || m.replyTo !== packetId) continue;
+    // My answer that never reached the radio isn't an answer: the crew didn't
+    // get it, and counting it locked the button on a "✓ On my way" nobody saw.
+    if (m.sendStatus === 'failed') continue;
     const prev = latest.get(m.fromNodeId);
     if (prev && prev.at > m.timestamp) continue;
     latest.set(m.fromNodeId, { nodeId: m.fromNodeId, name: m.fromName, kind: (m as ReplyMessage).kind, at: m.timestamp });

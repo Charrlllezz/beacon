@@ -72,7 +72,6 @@ export default function ChatScreen() {
   const [showRallyPicker, setShowRallyPicker] = useState(false);
   const [showRallyMapPicker, setShowRallyMapPicker] = useState(false);
   const [rallyNote, setRallyNote] = useState('');
-  const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -99,12 +98,11 @@ export default function ChatScreen() {
   }, []);
 
   const sendRaw = useCallback(async (text: string) => {
-    if (!text.trim() || sending) return;
+    if (!text.trim()) return;
     if (!myNodeNum) {
       Alert.alert('Not Ready', 'Still connecting to your device — try again in a moment.');
       return;
     }
-    setSending(true);
     const msg = parseMessage(text, myNodeNum, myName, Date.now(), 0);
     if (msg.type === 'going') {
       useScheduleStore.getState().addGoingEntry({
@@ -116,20 +114,32 @@ export default function ChatScreen() {
       });
     }
 
+    // Sends queue in order (send.ts); no "already sending" guard, which
+    // silently dropped a second message typed during a slow write.
     const result = await sendCrewMessage(text);
-    setSending(false);
     if (!result.ok) {
       Alert.alert('Send Failed', 'Message could not be sent. Check your device connection.');
     }
     scrollToBottom();
     return result;
-  }, [myNodeNum, myName, sending]);
+  }, [myNodeNum, myName]);
+
+  // The text box clears only when the message was taken, so "Not Ready"
+  // doesn't also throw away what was typed.
+  const handleSendText = useCallback((text: string): boolean => {
+    if (!myNodeNum) {
+      Alert.alert('Not Ready', 'Still connecting to your device — try again in a moment.');
+      return false;
+    }
+    sendRaw(text);
+    return true;
+  }, [myNodeNum, sendRaw]);
 
   const sendHeading = useCallback(async (stageId: string) => {
-    await sendRaw(buildHeadingMessage(stageId));
+    const result = await sendRaw(buildHeadingMessage(stageId));
     setShowQuickActions(false);
     const stage = festivalConfig.getStage(stageId);
-    showToast(`Heading to ${stage?.shortName ?? stageId} sent`);
+    if (result?.ok) showToast(`Heading to ${stage?.shortName ?? stageId} sent`);
   }, [sendRaw, showToast]);
 
   const openRallyPicker = useCallback(() => {
@@ -140,8 +150,8 @@ export default function ChatScreen() {
 
   const sendRallyAtLocation = useCallback(async (lat: number, lng: number, note?: string) => {
     hapticMedium();
-    await sendRaw(buildRallyMessage(lat, lng, note || undefined));
-    showToast('Rally point sent');
+    const result = await sendRaw(buildRallyMessage(lat, lng, note || undefined));
+    if (result?.ok) showToast('Rally point sent');
   }, [sendRaw, showToast]);
 
   const sendSOS = useCallback(async () => {
@@ -298,7 +308,7 @@ export default function ChatScreen() {
         )}
 
         <ChatInput
-          onSend={sendRaw}
+          onSend={handleSendText}
           onQuickAction={() => setShowQuickActions(v => !v)}
           disabled={status !== 'connected'}
         />
