@@ -1,0 +1,58 @@
+name: iOS build
+
+# Compiles the whole iOS app (native modules and app extensions included) on a
+# Mac, for the simulator and without signing. It catches Swift and Xcode
+# project errors before an EAS build. It does not prove anything runs on a
+# phone; docs/hardware-tests covers that.
+
+on:
+  pull_request:
+    paths:
+      - 'modules/**'
+      - 'targets/**'
+      - 'plugins/**'
+      - 'app.json'
+      - 'app.config.*'
+      - 'eas.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Generate the Xcode project
+        run: npx expo prebuild --platform ios --clean
+        env:
+          CI: 1
+      - name: Build for the simulator
+        run: |
+          set -o pipefail
+          ws=$(ls -d ios/*.xcworkspace | head -1)
+          scheme=$(basename "$ws" .xcworkspace)
+          xcodebuild -workspace "$ws" -scheme "$scheme" \
+            -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 \
+            | tee xcodebuild.log | xcbeautify --renderer github-actions
+      - name: Errors
+        if: failure()
+        run: grep -n -E 'error:|fatal error' xcodebuild.log | head -100 || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
