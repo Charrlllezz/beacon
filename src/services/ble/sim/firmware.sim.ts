@@ -275,7 +275,6 @@ describe(`RNDVU against meshtasticd ${FLEET_FIRMWARE} (sim)`, () => {
   });
 
   test("Find me: the app's position request gets the other radio's position, at most once per 3 minutes", async () => {
-    // Runs after the test above, which gave b a position from its phone.
     const a = mesh.nodeNum('a');
     const b = mesh.nodeNum('b');
     const replyFromB = (mark: number) => since(mark).find(p =>
@@ -285,9 +284,16 @@ describe(`RNDVU against meshtasticd ${FLEET_FIRMWARE} (sim)`, () => {
     const requestsToB = () => mesh.air.filter(p =>
       p.from === a && p.to === b && p.portnum === PortNum.POSITION_APP).length;
 
-    // Phone a shared its position in the test above, around the manager:
-    // the firmware drops a phone's position packets less than 10 s apart.
+    // b's radio has no GPS, so it only answers once its phone has shared a
+    // position (a radio with lat/lon zero declines: "Skip position send").
+    // Phone b's last position packet was in the test above, and the firmware
+    // drops a phone's position packets less than 10 s apart.
     await new Promise(r => setTimeout(r, PHONE_POSITION_GAP_MS));
+    const bPos = { latitudeI: 340870000, longitudeI: -1172910000, time: Math.floor(Date.now() / 1000) };
+    const bSharedBefore = positionsFrom('a', b).length;
+    mesh.writeFromPhone('b', phonePacket(BROADCAST, PortNum.POSITION_APP, encodePosition(bPos)));
+    await mesh.waitFor(() => positionsFrom('a', b).length > bSharedBefore, 60000, "b's position at a");
+
     const mark = packets.length;
     await mgr.requestPosition(b, nos);
     await mesh.waitFor(() => replyFromB(mark) !== undefined, 60000, "b's answer in the app on a");
