@@ -25,16 +25,27 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      # The built app depends only on app sources, so flow-only changes reuse it.
+      - name: Cached app
+        id: app-cache
+        uses: actions/cache@v4
+        with:
+          path: RNDVU.app
+          key: ios-sim-app-${{ hashFiles('src/**', 'App.tsx', 'index.ts', 'app.json', 'package-lock.json', 'modules/**', 'targets/**', 'assets/**', '.github/workflows/ios-screenshots.yml') }}
       - run: npm ci
+        if: steps.app-cache.outputs.cache-hit != 'true'
       - name: Use the mock radio (this checkout only)
+        if: steps.app-cache.outputs.cache-hit != 'true'
         run: |
           sed -i '' 's/export const USE_MOCK = false;/export const USE_MOCK = true;/' src/services/ble/BleManager.ts
           grep -q 'USE_MOCK = true' src/services/ble/BleManager.ts
       - name: Generate the Xcode project
+        if: steps.app-cache.outputs.cache-hit != 'true'
         run: npx expo prebuild --platform ios --clean
         env:
           CI: 1
       - name: Build (Release, simulator, JS bundled)
+        if: steps.app-cache.outputs.cache-hit != 'true'
         run: |
           set -o pipefail
           xcodebuild -workspace ios/RNDVU.xcworkspace -scheme RNDVU \
@@ -42,6 +53,7 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build CODE_SIGNING_ALLOWED=NO build 2>&1 \
             | tee xcodebuild.log | xcbeautify --renderer github-actions
+          cp -R build/Build/Products/Release-iphonesimulator/RNDVU.app RNDVU.app
       - name: Boot an iPhone
         run: |
           udid=$(xcrun simctl list devices available -j | python3 -c "
@@ -54,7 +66,7 @@ jobs:
           xcrun simctl bootstatus "$udid" -b
           xcrun simctl status_bar "$udid" override --time 21:41 --batteryLevel 84 --cellularBars 3 --wifiBars 2
           xcrun simctl location "$udid" set 33.6801,-116.2372
-          xcrun simctl install "$udid" "$(ls -d build/Build/Products/Release-iphonesimulator/RNDVU.app)"
+          xcrun simctl install "$udid" RNDVU.app
       - name: Install Maestro
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
