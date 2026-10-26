@@ -20,6 +20,8 @@ const PENDING_CONNECT_RETRY_MS = 15000;
 // background for a BLE event (radio sent a packet, pending connect completed)
 // after the system killed the suspended app. Ignored on Android.
 const RESTORE_STATE_ID = 'rndvu-ble-central';
+// Firmware drops position packets from the phone less than 10 s apart.
+export const PHONE_POSITION_GAP_MS = 10_500;
 
 export interface ConnectOptions {
   /**
@@ -47,6 +49,9 @@ export class ProvisioningInterruptedError extends Error {
 export class RealBleManager {
   private manager: BleManager;
   private device: Device | null = null;
+  // Position requests, spaced PHONE_POSITION_GAP_MS apart.
+  private positionQueue: Promise<void> = Promise.resolve();
+  private lastPositionToRadio = 0;
   private packetCallbacks = new Set<PacketCallback>();
   private statusCallbacks = new Set<StatusCallback>();
   private notifySub: Subscription | null = null;
@@ -433,18 +438,28 @@ export class RealBleManager {
    * normal POSITION_APP packet. Carries our position (see the encoder).
    */
   async requestPosition(to: number, ours: { lat: number; lng: number }, channelIndex = 0): Promise<void> {
-    if (!this.device || !this.isConnected) throw new Error('Not connected');
-    const myNodeNum = useDeviceStore.getState().myNodeNum ?? 0;
-    const position = {
-      latitudeI: Math.round(ours.lat * 1e7),
-      longitudeI: Math.round(ours.lng * 1e7),
-      time: Math.floor(Date.now() / 1000),
-    };
-    await this.device.writeCharacteristicWithResponseForService(
-      MESHTASTIC_SERVICE_UUID,
-      TO_RADIO_UUID,
-      this.uint8ToBase64(encodePositionRequest(to, myNodeNum, position, channelIndex, newPacketId())),
-    );
+    // Firmware 2.7.26 silently drops a position packet from the phone that
+    // comes within 10 s of the last one (PhoneAPI rate limit), so asking a
+    // second friend right after the first never left the radio. Queue them.
+    const run = this.positionQueue.then(async () => {
+      const wait = this.lastPositionToRadio + PHONE_POSITION_GAP_MS - Date.now();
+      if (wait > 0) await new Promise(r => setTimeout(r, wait));
+      if (!this.device || !this.isConnected) throw new Error('Not connected');
+      const myNodeNum = useDeviceStore.getState().myNodeNum ?? 0;
+      const position = {
+        latitudeI: Math.round(ours.lat * 1e7),
+        longitudeI: Math.round(ours.lng * 1e7),
+        time: Math.floor(Date.now() / 1000),
+      };
+      await this.device.writeCharacteristicWithResponseForService(
+        MESHTASTIC_SERVICE_UUID,
+        TO_RADIO_UUID,
+        this.uint8ToBase64(encodePositionRequest(to, myNodeNum, position, channelIndex, newPacketId())),
+      );
+      this.lastPositionToRadio = Date.now();
+    });
+    this.positionQueue = run.catch(() => {});
+    return run;
   }
 
   /**

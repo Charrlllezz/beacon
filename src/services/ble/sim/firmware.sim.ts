@@ -23,7 +23,7 @@ import { PortNum } from '../../../types/mesh';
 import { SimMesh } from './SimMesh';
 import { setSimMesh } from './TcpBlePlx';
 import { lenField, concat, fixed32Field, varField, getField, varintOf } from './wire';
-import { RealBleManager } from '../RealBleManager';
+import { RealBleManager, PHONE_POSITION_GAP_MS } from '../RealBleManager';
 import { routeFromRadio } from '../PacketRouter';
 import {
   decodePosition,
@@ -275,12 +275,24 @@ describe(`RNDVU against meshtasticd ${FLEET_FIRMWARE} (sim)`, () => {
   });
 
   test("Find me: the app's position request gets the other radio's position, at most once per 3 minutes", async () => {
-    // Runs after the test above, which gave b a position from its phone.
     const a = mesh.nodeNum('a');
     const b = mesh.nodeNum('b');
     const replyFromB = (mark: number) => since(mark).find(p =>
       p.packet?.from === b && p.packet.to === a && p.packet.decoded?.portnum === PortNum.POSITION_APP);
     const nos = { lat: 34.0866123, lng: -117.2917456 };
+
+    const requestsToB = () => mesh.air.filter(p =>
+      p.from === a && p.to === b && p.portnum === PortNum.POSITION_APP).length;
+
+    // b's radio has no GPS, so it only answers once its phone has shared a
+    // position (a radio with lat/lon zero declines: "Skip position send").
+    // Phone b's last position packet was in the test above, and the firmware
+    // drops a phone's position packets less than 10 s apart.
+    await new Promise(r => setTimeout(r, PHONE_POSITION_GAP_MS));
+    const bPos = { latitudeI: 340870000, longitudeI: -1172910000, time: Math.floor(Date.now() / 1000) };
+    const bSharedBefore = positionsFrom('a', b).length;
+    mesh.writeFromPhone('b', phonePacket(BROADCAST, PortNum.POSITION_APP, encodePosition(bPos)));
+    await mesh.waitFor(() => positionsFrom('a', b).length > bSharedBefore, 60000, "b's position at a");
 
     const mark = packets.length;
     await mgr.requestPosition(b, nos);
@@ -288,12 +300,15 @@ describe(`RNDVU against meshtasticd ${FLEET_FIRMWARE} (sim)`, () => {
     const pos = decodePosition(replyFromB(mark)!.packet!.decoded!.payload);
     expect([pos.latitudeI, pos.longitudeI]).toEqual([340870000, -1172910000]);
 
-    // The firmware answers a radio's position requests once per 3 minutes.
+    // Asked again straight away: the manager holds it until 10 s have passed,
+    // so it does go out, and b's radio doesn't answer (once per 3 minutes).
+    const sent = requestsToB();
     const mark2 = packets.length;
     await mgr.requestPosition(b, nos);
+    await mesh.waitFor(() => requestsToB() > sent, 30000, 'the second request on air');
     await new Promise(r => setTimeout(r, 20000));
     expect(replyFromB(mark2)).toBeUndefined();
-  }, 120000);
+  }, 150000);
 
   // Last: it moves c to its own crew key.
   test('Model 2: a crew key written at pairing comes back in the config drain (what adopting a shipped radio reads)', async () => {

@@ -22,6 +22,9 @@ also measures the battery cost.
   touching anything. That's B's radio answering.
 - [ ] With no tap from B, one reminder buzz about 2 minutes later.
 - [ ] **B's phone switched off:** A still gets B's position from the radio.
+- [ ] **B's radio with no GPS fix** (indoors, B's phone off since the radio
+  booted): A gets no position, only the alert on B's phone. That's expected:
+  a radio that doesn't know where it is declines to answer.
 
 ## 2. One tap
 
