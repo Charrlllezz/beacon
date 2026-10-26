@@ -70,18 +70,28 @@ export const useCrewStore = create<CrewState>((set, get) => ({
       if (!existing && partial.lastHeard !== undefined && !isOnline(partial.lastHeard)) {
         return state;
       }
+      // Drop keys that are present but undefined: the radio's stored record
+      // often lacks battery or last-heard, and spreading those undefineds
+      // wiped a peer's known "6%" (and its low-battery warning) on reconnect.
+      const known = Object.fromEntries(
+        Object.entries(partial).filter(([, v]) => v !== undefined),
+      ) as typeof partial;
+      // Never move last-heard backwards: a replayed record is older than the
+      // packet we just heard from them.
+      const lastHeard = Math.max(known.lastHeard ?? 0, existing?.lastHeard ?? 0) || undefined;
       return {
         crewMembers: {
           ...state.crewMembers,
           [partial.nodeId]: {
             ...existing,
-            ...partial,
+            ...known,
+            lastHeard,
             nodeId: partial.nodeId,
             // Use || not ?? so empty-string name from an unconfigured T-Echo
             // falls back to existing or 'Unknown' instead of rendering blank.
             longName: partial.longName || existing?.longName || 'Unknown',
             shortName: partial.shortName || existing?.shortName || '???',
-            isOnline: partial.isOnline ?? isOnline(partial.lastHeard ?? existing?.lastHeard),
+            isOnline: partial.isOnline ?? isOnline(lastHeard),
           },
         },
       };
