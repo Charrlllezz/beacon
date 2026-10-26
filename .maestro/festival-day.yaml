@@ -37,11 +37,14 @@ appId: com.charlesapps.rndvu
 - tapOn:
     text: ".*Meshtastic_MOCK.*"
     optional: true
+# With a crew key already on the radio, setup skips "Your crew".
 - extendedWaitUntil:
-    visible: "Your crew"
+    visible: "(Your crew|You're In!)"
     timeout: 60000
 - takeScreenshot: shots/05-your-crew
-- tapOn: "Start a new crew"
+- tapOn:
+    text: "Start a new crew"
+    optional: true
 - waitForAnimationToEnd
 - takeScreenshot: shots/06-start-crew
 - tapOn:
