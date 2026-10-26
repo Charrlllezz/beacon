@@ -111,7 +111,7 @@ appId: com.charlesapps.rndvu
     optional: true
 - takeScreenshot: shots/24-find-here
 - tapOn:
-    text: "Show on map"
+    text: ".*Show on map.*"
     optional: true
 - waitForAnimationToEnd
 - takeScreenshot: shots/25-find-show-on-map
@@ -129,6 +129,9 @@ appId: com.charlesapps.rndvu
     optional: true
 - inputText: "omw to sahara, save me a spot"
 - takeScreenshot: shots/32-chat-typing
+- tapOn:
+    text: ".*↑.*"
+    optional: true
 - pressKey: Enter
 - waitForAnimationToEnd
 - takeScreenshot: shots/33-chat-sent
@@ -141,7 +144,7 @@ appId: com.charlesapps.rndvu
 - waitForAnimationToEnd
 - takeScreenshot: shots/34-quick-actions
 - tapOn:
-    text: "Set Meetup"
+    text: ".*Set Meetup.*"
     optional: true
 - waitForAnimationToEnd
 - takeScreenshot: shots/35-set-meetup
@@ -160,7 +163,12 @@ appId: com.charlesapps.rndvu
     visible: "zzz-pause"
     timeout: 8000
     optional: true
-- takeScreenshot: shots/40-map
+- takeScreenshot: shots/40-map-intro
+- tapOn:
+    text: "Got it"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/40b-map
 - doubleTapOn:
     point: "50%,50%"
     optional: true
@@ -170,7 +178,7 @@ appId: com.charlesapps.rndvu
     optional: true
 - takeScreenshot: shots/41-map-zoomed
 - tapOn:
-    text: "\\+ Tag Spot"
+    text: ".*Tag Spot.*"
     optional: true
 - waitForAnimationToEnd
 - takeScreenshot: shots/42-tag-sheet
@@ -224,24 +232,24 @@ appId: com.charlesapps.rndvu
 
 # ── 8. Edge cases from the demo controls ───────────────────────────────
 - longPressOn:
-    text: ".* online"
+    text: ".*online.*"
     optional: true
 - waitForAnimationToEnd
 - takeScreenshot: shots/70-device-menu
 - tapOn:
-    text: "Debug Info"
+    text: ".*Debug Info.*"
     optional: true
 - waitForAnimationToEnd
 - takeScreenshot: shots/71-debug
 - scrollUntilVisible:
-    element: "Age peers 30m"
+    element: ".*Age peers 30m.*"
     direction: DOWN
     optional: true
 - tapOn:
-    text: "Age peers 30m"
+    text: ".*Age peers 30m.*"
     optional: true
 - tapOn:
-    text: "Drop BLE 5s"
+    text: ".*Drop BLE 5s.*"
     optional: true
 - tapOn:
     text: "Done"
