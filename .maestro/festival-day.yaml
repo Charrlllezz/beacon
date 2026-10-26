@@ -22,8 +22,9 @@ appId: com.charlesapps.rndvu
 - inputText: "Charles"
 - tapOn: "Short name.*"
 - inputText: "Char"
+# The name screen has no way to dismiss the keyboard (a finding); tap the
+# button with it up, as a person would.
 - takeScreenshot: shots/02-name
-- hideKeyboard
 - tapOn: "Connect Your Device"
 - takeScreenshot: shots/03-scanning
 - extendedWaitUntil:
@@ -173,8 +174,6 @@ appId: com.charlesapps.rndvu
     optional: true
 - inputText: "Water by the ferris wheel"
 - takeScreenshot: shots/43-tag-typing
-- hideKeyboard
-- takeScreenshot: shots/44-tag-keyboard-hidden
 - tapOn:
     text: "(Cancel|✕)"
     optional: true
