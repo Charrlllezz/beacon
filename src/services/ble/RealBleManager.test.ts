@@ -288,3 +288,46 @@ describe('RealBleManager (fake ble-plx over MockFirmware)', () => {
     expect(statuses.at(-1)).toBe('disconnected');
   });
 });
+
+describe('RealBleManager position requests', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  // Firmware 2.7.26 silently drops a phone's position packets less than 10 s
+  // apart, so a second Find request right after the first never went out.
+  test('a second request waits until 10 s after the first', async () => {
+    const w = resetWorld();
+    const mgr = new RealBleManager();
+    const p = mgr.connect(w.deviceId);
+    await vi.advanceTimersByTimeAsync(3000);
+    await p;
+    const seen: number[] = [];
+    const orig = w.firmware.handleToRadio.bind(w.firmware);
+    vi.spyOn(w.firmware, 'handleToRadio').mockImplementation((bytes: Uint8Array) => {
+      seen.push(Date.now());
+      orig(bytes);
+    });
+
+    const nos = { lat: 34.0866, lng: -117.2917 };
+    const first = mgr.requestPosition(PEER, nos);
+    const second = mgr.requestPosition(PEER + 1, nos);
+    await vi.advanceTimersByTimeAsync(0);
+    await first;
+    expect(seen).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(9000);
+    expect(seen).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(2000);
+    await second;
+    expect(seen).toHaveLength(2);
+    expect(seen[1] - seen[0]).toBeGreaterThanOrEqual(10_000);
+    mgr.disconnect();
+  });
+});

@@ -68,12 +68,16 @@ async function askTheirRadio(target: number, now: number): Promise<void> {
   // The request carries our position (their radio stores it), so without a
   // fix there's nothing safe to send.
   if (!me || !connected()) return;
+  // Marked before sending: the radio can hold the request up to 10 s (see
+  // requestPosition), and tickFind runs on every packet meanwhile.
+  const o = useFindStore.getState().outgoing;
+  if (o?.target === target) useFindStore.getState().setOutgoing({ ...o, positionAskedAt: now });
   try {
     await bleService.requestPosition(target, me);
-    const o = useFindStore.getState().outgoing;
-    if (o?.target === target) useFindStore.getState().setOutgoing({ ...o, positionAskedAt: now });
   } catch (e) {
     console.warn('position request failed:', e);
+    const current = useFindStore.getState().outgoing;
+    if (current?.target === target) useFindStore.getState().setOutgoing({ ...current, positionAskedAt: null });
   }
 }
 
@@ -83,7 +87,8 @@ async function askTheirRadio(target: number, now: number): Promise<void> {
 export async function askToFind(target: number, now = Date.now()): Promise<boolean> {
   if (!(await send(buildFindMessage(target)))) return false;
   useFindStore.getState().setOutgoing({ target, askedAt: now, remindedAt: null, positionAskedAt: null, helping: null });
-  await askTheirRadio(target, now);
+  // Not awaited: the request may wait up to 10 s behind an earlier one.
+  void askTheirRadio(target, now);
   return true;
 }
 
