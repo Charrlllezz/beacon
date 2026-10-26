@@ -27,13 +27,15 @@ appId: com.charlesapps.rndvu
 - takeScreenshot: shots/02-name
 - tapOn: "Connect Your Device"
 - takeScreenshot: shots/03-scanning
+# Rows are single accessible elements ("📟, Meshtastic_MOCK, ● Signal: …"),
+# so match inside the label.
 - extendedWaitUntil:
-    visible: "Meshtastic_MOCK"
+    visible: ".*Meshtastic_MOCK.*"
     timeout: 30000
     optional: true
 - takeScreenshot: shots/04-device-list
 - tapOn:
-    text: "Meshtastic_MOCK"
+    text: ".*Meshtastic_MOCK.*"
     optional: true
 - extendedWaitUntil:
     visible: "Your crew"
@@ -70,13 +72,13 @@ appId: com.charlesapps.rndvu
 - scroll
 - takeScreenshot: shots/12-crew-scrolled
 - scrollUntilVisible:
-    element: "Alex.*"
+    element: ".*Alex.*"
     direction: UP
     optional: true
 
 # ── 3. "Where's Alex?" Find, walking to them ────────────────────────────
 - tapOn:
-    text: "Alex.*"
+    text: ".*Alex.*"
     optional: true
 - waitForAnimationToEnd
 - takeScreenshot: shots/20-find-far
