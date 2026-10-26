@@ -1,0 +1,114 @@
+name: iOS screenshots
+
+# Runs the app in the iPhone simulator with the mock radio (USE_MOCK flipped
+# in this checkout only, never committed), taps through every screen with
+# Maestro and uploads the screenshots. For design review, not a test gate.
+
+on:
+  pull_request:
+    paths:
+      - '.maestro/**'
+      - '.github/workflows/ios-screenshots.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-shots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  screenshots:
+    runs-on: macos-26
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # The built app depends only on app sources, so flow-only changes reuse it.
+      - name: Cached app
+        id: app-cache
+        uses: actions/cache@v4
+        with:
+          path: RNDVU.app
+          key: ios-sim-app-${{ hashFiles('src/**', 'App.tsx', 'index.ts', 'app.json', 'package-lock.json', 'modules/**', 'targets/**', 'assets/**', '.github/workflows/ios-screenshots.yml') }}
+      - run: npm ci
+        if: steps.app-cache.outputs.cache-hit != 'true'
+      - name: Use the mock radio (this checkout only)
+        if: steps.app-cache.outputs.cache-hit != 'true'
+        run: |
+          sed -i '' 's/export const USE_MOCK = false;/export const USE_MOCK = true;/' src/services/ble/BleManager.ts
+          grep -q 'USE_MOCK = true' src/services/ble/BleManager.ts
+      - name: Generate the Xcode project
+        if: steps.app-cache.outputs.cache-hit != 'true'
+        run: npx expo prebuild --platform ios --clean
+        env:
+          CI: 1
+      - name: Build (Release, simulator, JS bundled)
+        if: steps.app-cache.outputs.cache-hit != 'true'
+        run: |
+          set -o pipefail
+          xcodebuild -workspace ios/RNDVU.xcworkspace -scheme RNDVU \
+            -configuration Release -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build 2>&1 \
+            | tee xcodebuild.log | xcbeautify --renderer github-actions
+          cp -R build/Build/Products/Release-iphonesimulator/RNDVU.app RNDVU.app
+      - name: Boot an iPhone
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          c=[x for k,v in d.items() if 'iOS' in k for x in v if x['name'].startswith('iPhone') and 'Pro' in x['name'] and 'Max' not in x['name']]
+          print(c[-1]['udid'])")
+          echo "UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl status_bar "$udid" override --time 21:41 --batteryLevel 84 --cellularBars 3 --wifiBars 2
+          xcrun simctl location "$udid" set 33.6801,-116.2372
+          xcrun simctl install "$udid" RNDVU.app
+      - name: Install Maestro
+        run: |
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+      - name: Start recording and app logs
+        run: |
+          mkdir -p shots sheets
+          xcrun simctl io "$UDID" recordVideo --codec h264 --force session.mp4 > /dev/null 2>&1 &
+          echo $! > video.pid
+          xcrun simctl spawn "$UDID" log stream --style compact --level debug \
+            --predicate 'process == "RNDVU" AND (messageType == error OR messageType == fault OR subsystem == "com.facebook.react.log")' \
+            > app.log 2>&1 &
+          echo $! > log.pid
+      - name: A festival day
+        run: maestro --device "$UDID" test .maestro/festival-day.yaml --test-output-dir maestro-out
+        continue-on-error: true
+        env:
+          # A cold simulator on CI takes longer than the 2-minute default to
+          # start Maestro's driver.
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: 600000
+      - name: Stop recording, make contact sheets
+        if: always()
+        run: |
+          xcrun simctl io "$UDID" screenshot shots/99-last-screen.png || true
+          kill -INT "$(cat video.pid)" || true
+          kill "$(cat log.pid)" || true
+          sleep 5
+          brew install ffmpeg > /dev/null 2>&1 || true
+          # One frame every 4 s, 4x3 frames per sheet.
+          ffmpeg -loglevel error -i session.mp4 \
+            -vf "fps=1/4,scale=300:-1,tile=4x3" sheets/sheet-%02d.png || true
+          ls sheets
+          echo "App log lines: $(wc -l < app.log)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: |
+            shots
+            .maestro/shots
+            sheets
+            app.log
+            session.mp4
+            maestro-out
+            ~/.maestro/tests
