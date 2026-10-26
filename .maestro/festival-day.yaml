@@ -115,6 +115,11 @@ appId: com.charlesapps.rndvu
     optional: true
 - waitForAnimationToEnd
 - takeScreenshot: shots/25-find-show-on-map
+- tapOn:
+    text: "Got it"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/26-map-from-find
 
 # ── 4. Chat: catch up, reply, quick actions ─────────────────────────────
 - tapOn:
@@ -187,8 +192,16 @@ appId: com.charlesapps.rndvu
     optional: true
 - inputText: "Water by the ferris wheel"
 - takeScreenshot: shots/43-tag-typing
+- pressKey: Enter
+- waitForAnimationToEnd
+- takeScreenshot: shots/44-tag-after-return
 - tapOn:
-    text: "(Cancel|✕)"
+    text: ".*Tag & Share.*"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/44b-tag-shared
+- tapOn:
+    text: "Cancel"
     optional: true
 - tapOn:
     text: "☰"
@@ -253,6 +266,9 @@ appId: com.charlesapps.rndvu
     optional: true
 - tapOn:
     text: "Done"
+    optional: true
+- tapOn:
+    point: "8%,6%"
     optional: true
 - waitForAnimationToEnd
 - takeScreenshot: shots/72-crew-aged-and-dropped
