@@ -77,6 +77,8 @@ export default function MapScreen() {
     useOfflineMapStore.getState().ensure(config);
   }, [config.festival.id]);
 
+  const hasFix = !!myLocation && !(myLocation.lat === 0 && myLocation.lng === 0);
+
   // Use satellite view when near venue, standard otherwise
   const isNearVenue = myLocation
     ? Math.abs(myLocation.lat - config.venue.center.lat) < 0.05 &&
@@ -143,16 +145,20 @@ export default function MapScreen() {
     setTimeout(() => setFocusNode(null), 600);
   }, [focusNodeId]);
 
-  // Center on current location each time the tab is focused
+  // Center on current location when the tab gains focus, and only then. Read
+  // the store directly: depending on myLocation re-ran this on every 5 m GPS
+  // update, snapping the map back to you while you panned to look at the
+  // crew, and clearing focusNodeId re-ran it too, undoing "show on map".
   useFocusEffect(
     useCallback(() => {
-      if (focusNodeId) return; // crew-focus effect handles this case
+      if (useCrewStore.getState().focusNodeId) return; // crew-focus effect handles this case
 
       const timer = setTimeout(() => {
-        if (myLocation) {
+        const loc = useCrewStore.getState().myLocation;
+        if (loc) {
           mapRef.current?.animateToRegion({
-            latitude: myLocation.lat,
-            longitude: myLocation.lng,
+            latitude: loc.lat,
+            longitude: loc.lng,
             latitudeDelta: 0.004,
             longitudeDelta: 0.004,
           }, 400);
@@ -160,7 +166,7 @@ export default function MapScreen() {
       }, 300);
 
       return () => clearTimeout(timer);
-    }, [focusNodeId, myLocation])
+    }, [])
   );
 
   const handleLongPress = useCallback((e: any) => {
@@ -227,19 +233,16 @@ export default function MapScreen() {
       <ConnectionBar />
 
       <View style={styles.mapWrapper}>
-        {(!myLocation || (myLocation.lat === 0 && myLocation.lng === 0)) && (
-          <View style={[styles.map, { alignItems: 'center', justifyContent: 'center' }]}>
-            <Text style={{ color: Colors.textSecondary }}>Getting your location...</Text>
-          </View>
-        )}
-        {myLocation && !(myLocation.lat === 0 && myLocation.lng === 0) && <MapView
+        {/* Always show the map: with no GPS fix yet (indoors at the gate, or
+            location off) the crew pins and tags are still useful. */}
+        <MapView
           ref={mapRef}
           style={styles.map}
           provider={PROVIDER_DEFAULT}
           mapType={isNearVenue ? 'satellite' : 'standard'}
           initialRegion={{
-            latitude: myLocation.lat,
-            longitude: myLocation.lng,
+            latitude: hasFix ? myLocation!.lat : config.venue.center.lat,
+            longitude: hasFix ? myLocation!.lng : config.venue.center.lng,
             latitudeDelta: 0.006,
             longitudeDelta: 0.006,
           }}
@@ -253,7 +256,10 @@ export default function MapScreen() {
           {tilesReady && (
             <UrlTile
               urlTemplate="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              maximumZ={18}
+              // Tiles are cached to z18; past that, scale them up instead
+              // of showing nothing offline.
+              maximumZ={20}
+              maximumNativeZ={18}
               minimumZ={14}
               tileCachePath={getTilePath()}
               offlineMode={isNearVenue}
@@ -282,7 +288,6 @@ export default function MapScreen() {
                 // tracksViewChanges is off, so the key carries the label:
                 // a new label re-creates the marker and the view updates.
                 key={`${member.nodeId}-${age.label}-${age.stale ? 's' : 'f'}`}
-                opacity={age.stale ? 0.45 : 1}
                 coordinate={{ latitude: member.lat!, longitude: member.lng! }}
                 tracksViewChanges={false}
                 onPress={() => {
@@ -295,16 +300,24 @@ export default function MapScreen() {
                 }}
               >
                 <View style={styles.crewPinContainer}>
-                  <View style={[styles.crewPinCircle, { backgroundColor: bg }]}>
+                  {/* Fade the pin, not its age label: on a stale pin the
+                      age is the thing to read. */}
+                  <View style={[styles.crewPinCircle, { backgroundColor: bg }, age.stale && styles.crewPinFaded, age.stale && styles.crewPinDashed]}>
                     <Text style={styles.crewPinText}>{initials}</Text>
                   </View>
-                  <View style={[styles.crewPinTail, { borderTopColor: bg }]} />
+                  <View style={[styles.crewPinTail, { borderTopColor: bg }, age.stale && styles.crewPinFaded]} />
                   <Text style={[styles.crewPinAge, age.stale && styles.crewPinAgeStale]}>{age.label}</Text>
                 </View>
               </Marker>
             );
           })}
-        </MapView>}
+        </MapView>
+
+        {!hasFix && (
+          <View style={styles.noFixBanner} pointerEvents="none">
+            <Text style={styles.noFixText}>No GPS fix yet. Showing the venue; crew pins still update.</Text>
+          </View>
+        )}
 
         {/* Search & filter overlay */}
         <View style={styles.filterOverlay}>
@@ -498,7 +511,15 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     overflow: 'hidden',
   },
-  crewPinAgeStale: { color: Colors.textMuted },
+  crewPinAgeStale: { color: Colors.warning },
+  crewPinFaded: { opacity: 0.4 },
+  crewPinDashed: { borderStyle: 'dashed' },
+  noFixBanner: {
+    position: 'absolute', bottom: Spacing.md, left: Spacing.md, right: 72,
+    backgroundColor: Colors.overlay, borderRadius: BorderRadius.md,
+    paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md,
+  },
+  noFixText: { color: Colors.textSecondary, fontSize: FontSize.xs },
   crewPinTail: {
     width: 0,
     height: 0,
