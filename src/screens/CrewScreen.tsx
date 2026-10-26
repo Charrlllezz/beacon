@@ -571,7 +571,14 @@ export default function CrewScreen() {
         </TouchableOpacity>
       </Modal>
 
-      <Modal visible={debugVisible} animationType="slide" onRequestClose={() => setDebugVisible(false)}>
+      {/* pageSheet like the other sheets: full screen, the safe-area insets
+          read 0 inside the Modal and Done sat under the status bar. */}
+      <Modal
+        visible={debugVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setDebugVisible(false)}
+      >
         <DebugScreen onClose={() => setDebugVisible(false)} />
       </Modal>
 
