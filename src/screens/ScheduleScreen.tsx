@@ -352,8 +352,14 @@ export default function ScheduleScreen() {
         animationType="fade"
         onRequestClose={handleCancel}
       >
-        <Pressable style={styles.modalOverlay} onPress={handleCancel}>
-          <Pressable style={styles.modalCard} onPress={() => {}}>
+        <Pressable style={styles.modalOverlay} onPress={handleCancel} accessible={false}>
+          <Pressable
+            style={styles.modalCard}
+            onPress={() => {}}
+            accessible={false}
+            accessibilityViewIsModal
+            onAccessibilityEscape={handleCancel}
+          >
             <Text style={styles.modalTitle}>Scheduling Conflict</Text>
             <Text style={styles.modalSubtitle}>
               {pendingPick?.slot.artistName} overlaps with:

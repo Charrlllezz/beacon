@@ -34,8 +34,8 @@ export default function FirstOpenTip({ storageKey, title, tips }: Props) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleDismiss}>
       <View style={styles.backdrop}>
-        <View style={styles.card}>
-          <Text style={styles.title}>{title}</Text>
+        <View style={styles.card} accessibilityViewIsModal>
+          <Text style={styles.title} accessibilityRole="header">{title}</Text>
 
           <View style={styles.tipsList}>
             {tips.map((tip, index) => (
@@ -49,7 +49,7 @@ export default function FirstOpenTip({ storageKey, title, tips }: Props) {
             ))}
           </View>
 
-          <TouchableOpacity style={styles.dismissButton} onPress={handleDismiss}>
+          <TouchableOpacity style={styles.dismissButton} onPress={handleDismiss} accessibilityRole="button">
             <Text style={styles.dismissButtonText}>Got it</Text>
           </TouchableOpacity>
         </View>
