@@ -1,0 +1,89 @@
+# Taps through RNDVU on the mock radio and screenshots each screen for design
+# review. Run by .github/workflows/ios-screenshots.yml.
+appId: com.charlesapps.rndvu
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- extendedWaitUntil:
+    visible: "Get Started"
+    timeout: 60000
+- takeScreenshot: shots/01-welcome
+- tapOn: "Get Started"
+- tapOn: "Display name.*"
+- inputText: "Charles"
+- tapOn: "Short name.*"
+- inputText: "Char"
+- takeScreenshot: shots/02-name
+- hideKeyboard
+- tapOn: "Connect Your Device"
+- takeScreenshot: shots/03-scanning
+- extendedWaitUntil:
+    visible: "Meshtastic_MOCK"
+    timeout: 30000
+    optional: true
+- takeScreenshot: shots/04-device-list
+- tapOn:
+    text: "Meshtastic_MOCK"
+    optional: true
+- extendedWaitUntil:
+    visible: "Your crew"
+    timeout: 60000
+- takeScreenshot: shots/05-your-crew
+- tapOn: "Start a new crew"
+- waitForAnimationToEnd
+- takeScreenshot: shots/06-after-start-crew
+- tapOn:
+    text: "(OK|Allow|Continue|Create.*)"
+    optional: true
+- extendedWaitUntil:
+    visible: "Go to RNDVU.*"
+    timeout: 30000
+    optional: true
+- takeScreenshot: shots/07-youre-in
+- tapOn:
+    text: "Go to RNDVU.*"
+    optional: true
+- waitForAnimationToEnd
+- tapOn:
+    text: "(OK|Got it|Not now|Later)"
+    optional: true
+- swipe:
+    direction: DOWN
+    optional: true
+- takeScreenshot: shots/10-crew
+- tapOn:
+    text: "Alex.*"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/11-find
+- tapOn:
+    text: "(Done|Close|✕)"
+    optional: true
+- tapOn:
+    id: "Chat"
+    optional: true
+- tapOn:
+    text: "Chat"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/20-chat
+- tapOn:
+    text: "Map"
+    optional: true
+- extendedWaitUntil:
+    notVisible: "zzz-never"
+    timeout: 8000
+    optional: true
+- takeScreenshot: shots/30-map
+- tapOn:
+    text: "Lineup"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/40-lineup
+- tapOn:
+    text: "Crew"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/50-crew-again
