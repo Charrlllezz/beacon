@@ -1,0 +1,256 @@
+# A scripted festival day on the mock radio (6 crew at Coachella, scripted
+# chat in the first ~65 s). Moves the phone's GPS between spots and
+# screenshots as it goes, for design and UX review. Taps after setup are
+# optional so one miss doesn't end the run; the screen recording shows what
+# actually happened. Run by .github/workflows/ios-screenshots.yml.
+appId: com.charlesapps.rndvu
+---
+# ── 1. Arrive at the gate, set up ───────────────────────────────────────
+- setLocation:
+    latitude: 33.6830
+    longitude: -116.2320
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- extendedWaitUntil:
+    visible: "Get Started"
+    timeout: 90000
+- takeScreenshot: shots/01-welcome
+- tapOn: "Get Started"
+- tapOn: "Display name.*"
+- inputText: "Charles"
+- tapOn: "Short name.*"
+- inputText: "Char"
+- takeScreenshot: shots/02-name
+- hideKeyboard
+- tapOn: "Connect Your Device"
+- takeScreenshot: shots/03-scanning
+- extendedWaitUntil:
+    visible: "Meshtastic_MOCK"
+    timeout: 30000
+    optional: true
+- takeScreenshot: shots/04-device-list
+- tapOn:
+    text: "Meshtastic_MOCK"
+    optional: true
+- extendedWaitUntil:
+    visible: "Your crew"
+    timeout: 60000
+- takeScreenshot: shots/05-your-crew
+- tapOn: "Start a new crew"
+- waitForAnimationToEnd
+- takeScreenshot: shots/06-start-crew
+- tapOn:
+    text: "(OK|Allow|Continue|Create.*|Done)"
+    optional: true
+- extendedWaitUntil:
+    visible: "Go to RNDVU.*"
+    timeout: 30000
+    optional: true
+- takeScreenshot: shots/07-youre-in
+- tapOn:
+    text: "Go to RNDVU.*"
+    optional: true
+- waitForAnimationToEnd
+- tapOn:
+    text: "(OK|Got it|Not now|Later|Allow)"
+    optional: true
+- takeScreenshot: shots/10-crew-first-look
+
+# ── 2. Walk in toward the main stage, checking the crew list ───────────
+- travel:
+    points:
+      - 33.6830,-116.2320
+      - 33.6822,-116.2335
+      - 33.6812,-116.2350
+    speed: 18
+- takeScreenshot: shots/11-crew-at-main-stage
+- scroll
+- takeScreenshot: shots/12-crew-scrolled
+- scrollUntilVisible:
+    element: "Alex.*"
+    direction: UP
+    optional: true
+
+# ── 3. "Where's Alex?" Find, walking to them ────────────────────────────
+- tapOn:
+    text: "Alex.*"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/20-find-far
+- tapOn:
+    text: "Ask .* to help"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/21-find-asked
+- travel:
+    points:
+      - 33.6812,-116.2350
+      - 33.6808,-116.2362
+    speed: 18
+- takeScreenshot: shots/22-find-closer
+- travel:
+    points:
+      - 33.6808,-116.2362
+      - 33.6804,-116.2374
+    speed: 18
+- takeScreenshot: shots/23-find-close
+- setLocation:
+    latitude: 33.68032
+    longitude: -116.23778
+- extendedWaitUntil:
+    visible: "zzz-pause"
+    timeout: 6000
+    optional: true
+- takeScreenshot: shots/24-find-here
+- tapOn:
+    text: "Show on map"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/25-find-show-on-map
+
+# ── 4. Chat: catch up, reply, quick actions ─────────────────────────────
+- tapOn:
+    text: "Chat"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/30-chat
+- scroll
+- takeScreenshot: shots/31-chat-scrolled
+- tapOn:
+    text: "Message your crew.*"
+    optional: true
+- inputText: "omw to sahara, save me a spot"
+- takeScreenshot: shots/32-chat-typing
+- pressKey: Enter
+- waitForAnimationToEnd
+- takeScreenshot: shots/33-chat-sent
+- tapOn:
+    text: "Hide keyboard"
+    optional: true
+- tapOn:
+    text: "＋"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/34-quick-actions
+- tapOn:
+    text: "Set Meetup"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/35-set-meetup
+- tapOn:
+    text: "Cancel"
+    optional: true
+- tapOn:
+    text: "✕"
+    optional: true
+
+# ── 5. Map: look around, tag water ──────────────────────────────────────
+- tapOn:
+    text: "Map"
+    optional: true
+- extendedWaitUntil:
+    visible: "zzz-pause"
+    timeout: 8000
+    optional: true
+- takeScreenshot: shots/40-map
+- doubleTapOn:
+    point: "50%,50%"
+    optional: true
+- extendedWaitUntil:
+    visible: "zzz-pause"
+    timeout: 4000
+    optional: true
+- takeScreenshot: shots/41-map-zoomed
+- tapOn:
+    text: "\\+ Tag Spot"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/42-tag-sheet
+- tapOn:
+    text: "Name this location.*"
+    optional: true
+- inputText: "Water by the ferris wheel"
+- takeScreenshot: shots/43-tag-typing
+- hideKeyboard
+- takeScreenshot: shots/44-tag-keyboard-hidden
+- tapOn:
+    text: "(Cancel|✕)"
+    optional: true
+- tapOn:
+    text: "☰"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/45-map-filters
+- tapOn:
+    text: "☰"
+    optional: true
+
+# ── 6. Lineup ───────────────────────────────────────────────────────────
+- tapOn:
+    text: "Lineup"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/50-lineup
+- scroll
+- takeScreenshot: shots/51-lineup-scrolled
+- swipe:
+    direction: LEFT
+- waitForAnimationToEnd
+- takeScreenshot: shots/52-lineup-next-day
+
+# ── 7. Phone in pocket while walking to Sahara, then back ─────────────
+- pressKey: Home
+- travel:
+    points:
+      - 33.68032,-116.23778
+      - 33.6795,-116.2368
+      - 33.6790,-116.2350
+    speed: 6
+- takeScreenshot: shots/60-home-screen-notifications
+- launchApp
+- waitForAnimationToEnd
+- takeScreenshot: shots/61-back-in-app
+- tapOn:
+    text: "Crew"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/62-crew-after-walk
+
+# ── 8. Edge cases from the demo controls ───────────────────────────────
+- longPressOn:
+    text: ".* online"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/70-device-menu
+- tapOn:
+    text: "Debug Info"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/71-debug
+- scrollUntilVisible:
+    element: "Age peers 30m"
+    direction: DOWN
+    optional: true
+- tapOn:
+    text: "Age peers 30m"
+    optional: true
+- tapOn:
+    text: "Drop BLE 5s"
+    optional: true
+- tapOn:
+    text: "Done"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/72-crew-aged-and-dropped
+- extendedWaitUntil:
+    visible: "zzz-pause"
+    timeout: 8000
+    optional: true
+- takeScreenshot: shots/73-crew-after-reconnect
+- tapOn:
+    text: "Map"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/74-map-stale-pins
