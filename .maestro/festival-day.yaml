@@ -22,9 +22,11 @@ appId: com.charlesapps.rndvu
 - inputText: "Charles"
 - tapOn: "Short name.*"
 - inputText: "Char"
-# The name screen has no way to dismiss the keyboard (a finding); tap the
-# button with it up, as a person would.
 - takeScreenshot: shots/02-name
+# Done on the short name closes the keyboard.
+- pressKey: Enter
+- waitForAnimationToEnd
+- takeScreenshot: shots/02b-name-keyboard-closed
 - tapOn: "Connect Your Device"
 - takeScreenshot: shots/03-scanning
 # Rows are single accessible elements ("📟, Meshtastic_MOCK, ● Signal: …"),
@@ -154,7 +156,8 @@ appId: com.charlesapps.rndvu
 - waitForAnimationToEnd
 - takeScreenshot: shots/35-set-meetup
 - tapOn:
-    point: "27%,93%"
+    text: "Cancel"
+    optional: true
 - waitForAnimationToEnd
 - takeScreenshot: shots/36-meetup-cancelled
 - tapOn:
@@ -193,14 +196,12 @@ appId: com.charlesapps.rndvu
     optional: true
 - inputText: "Water by the ferris wheel"
 - takeScreenshot: shots/43-tag-typing
-- pressKey: Enter
-- waitForAnimationToEnd
-- takeScreenshot: shots/44-tag-after-return
+# The sheet sits above the keyboard: share without closing it first.
 - tapOn:
     text: ".*Tag & Share.*"
     optional: true
 - waitForAnimationToEnd
-- takeScreenshot: shots/44b-tag-shared
+- takeScreenshot: shots/44-tag-shared
 - tapOn:
     text: "Cancel"
     optional: true
@@ -212,13 +213,24 @@ appId: com.charlesapps.rndvu
 - tapOn:
     text: "☰"
     optional: true
+# The tag as the crew sees it in chat.
+- tapOn:
+    text: "Chat"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/46-chat-tag-card
 
 # ── 6. Lineup ───────────────────────────────────────────────────────────
 - tapOn:
     text: "Lineup"
     optional: true
 - waitForAnimationToEnd
-- takeScreenshot: shots/50-lineup
+- takeScreenshot: shots/50-lineup-intro
+- tapOn:
+    text: "Got it"
+    optional: true
+- waitForAnimationToEnd
+- takeScreenshot: shots/50b-lineup
 - scroll
 - takeScreenshot: shots/51-lineup-scrolled
 - swipe:
@@ -267,9 +279,6 @@ appId: com.charlesapps.rndvu
     optional: true
 - tapOn:
     text: "Done"
-    optional: true
-- tapOn:
-    point: "5%,3%"
     optional: true
 - waitForAnimationToEnd
 - takeScreenshot: shots/72-crew-aged-and-dropped
