@@ -7,7 +7,7 @@ import {
   TO_RADIO_UUID,
   FROM_NUM_UUID,
 } from './ConnectionState';
-import { decodeFromRadio, encodeToRadio, newPacketId,encodeWantConfig, encodeSetChannel, encodeBeginEditSettings, encodeCommitEditSettings, encodeDisableChannel, encodeSetLoraConfig, encodeHeartbeat, encodeSetOwner, encodeFactoryReset, encodeSetPositionConfig, encodeSetTelemetryConfig } from './MeshtasticCodec';
+import { decodeFromRadio, encodeToRadio, newPacketId,encodeWantConfig, encodeSetChannel, encodeBeginEditSettings, encodeCommitEditSettings, encodeDisableChannel, encodeSetLoraConfig, encodeHeartbeat, encodeSetOwner, encodeFactoryReset, encodeSetPositionConfig, encodeSetTelemetryConfig, encodePositionRequest } from './MeshtasticCodec';
 import { useDeviceStore } from '../../store/useDeviceStore';
 
 export type PacketCallback = (fromRadio: FromRadio) => void;
@@ -425,6 +425,26 @@ export class RealBleManager {
       base64,
     );
     return id;
+  }
+
+  /**
+   * Ask one crew member's radio for its position now (Find me). Their radio
+   * answers by itself, at most once per 3 minutes; the reply arrives as a
+   * normal POSITION_APP packet. Carries our position (see the encoder).
+   */
+  async requestPosition(to: number, ours: { lat: number; lng: number }, channelIndex = 0): Promise<void> {
+    if (!this.device || !this.isConnected) throw new Error('Not connected');
+    const myNodeNum = useDeviceStore.getState().myNodeNum ?? 0;
+    const position = {
+      latitudeI: Math.round(ours.lat * 1e7),
+      longitudeI: Math.round(ours.lng * 1e7),
+      time: Math.floor(Date.now() / 1000),
+    };
+    await this.device.writeCharacteristicWithResponseForService(
+      MESHTASTIC_SERVICE_UUID,
+      TO_RADIO_UUID,
+      this.uint8ToBase64(encodePositionRequest(to, myNodeNum, position, channelIndex, newPacketId())),
+    );
   }
 
   /**

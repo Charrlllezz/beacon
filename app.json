@@ -15,13 +15,22 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.charlesapps.rndvu",
+      "appleTeamId": "7K8KA335HS",
       "infoPlist": {
         "NSBluetoothAlwaysUsageDescription": "RNDVU uses Bluetooth to connect to your mesh device and communicate with your crew.",
         "NSBluetoothPeripheralUsageDescription": "RNDVU uses Bluetooth to connect to your mesh device.",
         "NSLocationWhenInUseUsageDescription": "RNDVU uses your location to share your position with your crew on the festival map.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "RNDVU uses your location in the background to keep your crew updated on your position.",
+        "NSNearbyInteractionUsageDescription": "RNDVU uses Ultra Wideband to point you to a crew member when you're close, like Find My.",
+        "NSLocalNetworkUsageDescription": "RNDVU connects directly to a nearby crew member's phone, without the internet, to start precise finding.",
+        "NSBonjourServices": [
+          "_rndvu-ni._tcp",
+          "_rndvu-ni._udp"
+        ],
+        "NSSupportsLiveActivities": true,
         "UIBackgroundModes": [
-          "bluetooth-central"
+          "bluetooth-central",
+          "nearby-interaction"
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
@@ -30,6 +39,7 @@
       }
     },
     "plugins": [
+      "@bacons/apple-targets",
       [
         "react-native-ble-plx",
         {
@@ -51,7 +61,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "RNDVU uses the camera to scan your crew's invite QR code.",
+          "cameraPermission": "RNDVU uses the camera to scan your crew's invite QR code, and to point you to a crew member up close.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }

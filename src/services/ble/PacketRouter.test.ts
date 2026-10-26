@@ -115,3 +115,22 @@ describe('PacketRouter onMeshMessage', () => {
     off1(); off2();
   });
 });
+
+describe('PacketRouter Find me', () => {
+  test("a request for me raises it, never shows in chat, and a live position moves the sender's pin", async () => {
+    const { useFindStore } = await import('../../store/useFindStore');
+    useCrewStore.getState().upsertMember({ nodeId: PEER, longName: 'Maya', shortName: 'MAYA', lastHeard: Math.floor(Date.now() / 1000) });
+    const before = useMessagesStore.getState().messages.length;
+
+    routeFromRadio(textPacket(`MF:F:${ME.toString(16)}`), ME);
+    expect(useFindStore.getState().incoming).toMatchObject({ finder: PEER, finderName: 'Maya' });
+
+    routeFromRadio(textPacket('MF:F:12345678'), ME); // someone else's search
+    routeFromRadio(textPacket('MF:P:34.08661,-117.29170'), ME);
+    expect(useCrewStore.getState().crewMembers[PEER]).toMatchObject({ lat: 34.08661, lng: -117.2917 });
+
+    routeFromRadio(textPacket(`MF:F:${ME.toString(16)}:0`), ME); // called off
+    expect(useFindStore.getState().incoming).toBeNull();
+    expect(useMessagesStore.getState().messages.length).toBe(before);
+  });
+});
