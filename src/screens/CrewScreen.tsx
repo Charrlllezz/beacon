@@ -22,7 +22,9 @@ import { CREW_COLORS } from './MapScreen';
 import type { CrewMember } from '../types/crew';
 import type { Stage } from '../types/festival';
 import { useEndTripStore, debriefHandled, skipDebrief } from '../components/debrief/EndTripSheet';
-import { shouldOfferDebrief } from '../utils/debrief';
+import { shouldOfferDebrief, debriefTarget } from '../utils/debrief';
+import { BUNDLED_FESTIVALS } from '../services/festival/festivals';
+import { useNow } from '../utils/useNow';
 import CrewKeyCard from '../components/crew/CrewKeyCard';
 import FindSheet from '../components/crew/FindSheet';
 
@@ -152,8 +154,8 @@ export default function CrewScreen() {
   const [offerDebrief, setOfferDebrief] = useState(false);
   const endTripOpen = useEndTripStore(s => s.open);
   useEffect(() => {
-    const c = festivalConfig.getConfig();
-    if (!shouldOfferDebrief(c, Date.now())) { setOfferDebrief(false); return; }
+    const c = debriefTarget(BUNDLED_FESTIVALS, Date.now());
+    if (!c || !shouldOfferDebrief(c, Date.now())) { setOfferDebrief(false); return; }
     debriefHandled(c.festival.id).then(done => setOfferDebrief(!done));
   }, [endTripOpen]);
 
@@ -341,8 +343,10 @@ export default function CrewScreen() {
     }
   }, [setMyColor]);
 
+  // Ticks, so "Watching X" moves on when a set ends.
+  const nowMs = useNow(60_000);
   const watchingStatusMap = useMemo(() => {
-    const now = new Date();
+    const now = new Date(nowMs);
     const map = new Map<number, string | undefined>();
     for (const member of members) {
       const activePick = getActivePickForNode(member.nodeId, (stageId, artistId) =>
@@ -365,7 +369,7 @@ export default function CrewScreen() {
       }
     }
     return map;
-  }, [members, goingEntries, getActivePickForNode]);
+  }, [members, goingEntries, getActivePickForNode, nowMs]);
 
   const locationCtxMap = useMemo(() => {
     const map = new Map<string, string | undefined>();
@@ -456,7 +460,7 @@ export default function CrewScreen() {
                 <Text style={styles.colorButtonText}>End trip</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => { skipDebrief(festivalConfig.getConfig().festival.id); setOfferDebrief(false); }}
+                onPress={() => { skipDebrief((debriefTarget(BUNDLED_FESTIVALS, Date.now()) ?? festivalConfig.getConfig()).festival.id); setOfferDebrief(false); }}
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               >
                 <Text style={styles.debriefSkip}>Not now</Text>
