@@ -13,18 +13,21 @@ interface Props {
   storageKey: string;
   title: string;
   tips: Tip[];
+  // True holds the tip back without marking it seen.
+  deferred?: boolean;
 }
 
-export default function FirstOpenTip({ storageKey, title, tips }: Props) {
+export default function FirstOpenTip({ storageKey, title, tips, deferred = false }: Props) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    if (deferred) return;
     AsyncStorage.getItem(storageKey).then(value => {
       if (value !== 'dismissed') {
         setVisible(true);
       }
     });
-  }, [storageKey]);
+  }, [storageKey, deferred]);
 
   const handleDismiss = async () => {
     setVisible(false);
