@@ -59,17 +59,44 @@ jobs:
         run: |
           curl -fsSL "https://get.maestro.mobile.dev" | bash
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-      - name: Tap through the app
-        run: maestro --device "$UDID" test .maestro/screens.yaml --test-output-dir maestro-out
+      - name: Start recording and app logs
+        run: |
+          mkdir -p shots sheets
+          xcrun simctl io "$UDID" recordVideo --codec h264 --force session.mp4 > /dev/null 2>&1 &
+          echo $! > video.pid
+          xcrun simctl spawn "$UDID" log stream --style compact --level debug \
+            --predicate 'process == "RNDVU" AND (messageType == error OR messageType == fault OR subsystem == "com.facebook.react.log")' \
+            > app.log 2>&1 &
+          echo $! > log.pid
+      - name: A festival day
+        run: maestro --device "$UDID" test .maestro/festival-day.yaml --test-output-dir maestro-out
         continue-on-error: true
-      - name: Last screen
+        env:
+          # A cold simulator on CI takes longer than the 2-minute default to
+          # start Maestro's driver.
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: 600000
+      - name: Stop recording, make contact sheets
         if: always()
-        run: xcrun simctl io "$UDID" screenshot shots/99-last-screen.png || true
+        run: |
+          xcrun simctl io "$UDID" screenshot shots/99-last-screen.png || true
+          kill -INT "$(cat video.pid)" || true
+          kill "$(cat log.pid)" || true
+          sleep 5
+          brew install ffmpeg > /dev/null 2>&1 || true
+          # One frame every 4 s, 4x3 frames per sheet.
+          ffmpeg -loglevel error -i session.mp4 \
+            -vf "fps=1/4,scale=300:-1,tile=4x3" sheets/sheet-%02d.png || true
+          ls sheets
+          echo "App log lines: $(wc -l < app.log)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: screenshots
           path: |
             shots
+            .maestro/shots
+            sheets
+            app.log
+            session.mp4
             maestro-out
             ~/.maestro/tests
