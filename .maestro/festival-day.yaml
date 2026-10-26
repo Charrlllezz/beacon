@@ -154,8 +154,9 @@ appId: com.charlesapps.rndvu
 - waitForAnimationToEnd
 - takeScreenshot: shots/35-set-meetup
 - tapOn:
-    text: "Cancel"
-    optional: true
+    point: "27%,93%"
+- waitForAnimationToEnd
+- takeScreenshot: shots/36-meetup-cancelled
 - tapOn:
     text: "✕"
     optional: true
@@ -268,7 +269,7 @@ appId: com.charlesapps.rndvu
     text: "Done"
     optional: true
 - tapOn:
-    point: "8%,6%"
+    point: "5%,3%"
     optional: true
 - waitForAnimationToEnd
 - takeScreenshot: shots/72-crew-aged-and-dropped
