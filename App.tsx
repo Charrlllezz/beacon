@@ -358,6 +358,7 @@ export default function App() {
   function stopPhoneGps() {
     gpsSubRef.current?.remove();
     gpsSubRef.current = null;
+    useCrewStore.getState().releasePhoneLocation();
   }
 
   async function loadOnboardingStateAndReconnect() {
