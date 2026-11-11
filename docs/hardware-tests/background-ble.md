@@ -55,6 +55,24 @@ For each row, note when the banner arrived. A delay of a few seconds is normal. 
 
 This is hard to force. Leave B locked overnight, or open several heavy apps (camera, games) on B to apply memory pressure. Then send from A. If B notifies, iOS relaunched RNDVU in the background through BLE state restoration. Console shows `BLE state restored with 1 connected peripheral(s)`.
 
+## With one phone: the laptop stands in for B
+
+When only one person is around, the second T-Echo plugged into the laptop can play phone B.
+
+1. Pair the phone with one T-Echo as usual. Plug the other T-Echo (same crew) into the laptop by USB.
+2. Stop the laptop sleeping while it's plugged in: `powercfg /change standby-timeout-ac 0` (set it back with `30` afterwards).
+3. Run `python scripts/stand_in_crew.py` (add `--port COM5` if it can't find the radio). It checks the radio is on the RNDVU channel.
+4. Send t1 from the phone, then lock it. The script sends B's rows on the schedule above (t2, the meetup, the SOS, t6, t8). After two hours it sends a numbered text (`n1 14:05`, `n2 14:20` …) every 15 minutes for 48 hours.
+5. Put the phone in a Focus mode that doesn't allow RNDVU, so the SOS at 1:00 checks breaking through. If you'd rather not have it go off overnight, start the script with `--no-sos`.
+6. Do the link-loss steps on the phone's T-Echo (out of range or power it off, bring it back, keep the phone locked) and check the next numbered text still notifies.
+
+**Next morning**, compare the phone with the CSV the script wrote (`stand-in-<date>.csv`):
+- Every `n` text the script sent appears in chat once, in order, with no gaps.
+- The phone's notification history has a banner for each one. Note any that are missing or minutes late.
+- Every text sent from the phone shows in the CSV as `in`.
+
+One phone covers everything above except two phones locked at the same time and a second iPhone model or iOS version.
+
 ## Report back
 
 - A notification log: sent time, received time, and the text shown.
