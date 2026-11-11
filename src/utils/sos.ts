@@ -34,7 +34,10 @@ export function sosHeads(messages: Message[]): SOSMessage[] {
   const seen = new Set<string>();
   const heads: SOSMessage[] = [];
   for (const m of messages) {
-    if (m.type !== 'sos') continue;
+    // A first alert that failed to send has no packet id, so it became its
+    // own thread that nothing could end: a stuck "YOUR SOS IS ON" card per
+    // retry. The controller retries it; only what went out counts.
+    if (m.type !== 'sos' || m.sendStatus === 'failed') continue;
     const key = threadKey(m);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -60,7 +63,7 @@ export function sosThread(messages: Message[], root: SOSMessage): SosThread {
   let sends = 0;
   let endedAt: number | undefined;
   for (const m of messages) {
-    if (m.fromNodeId !== root.fromNodeId) continue;
+    if (m.fromNodeId !== root.fromNodeId || m.sendStatus === 'failed') continue;
     if (m.type === 'sos' && (m.id === root.id || (anchor !== undefined && sosAnchor(m) === anchor))) {
       sends++;
       if (m.timestamp >= updatedAt) { lat = m.lat; lng = m.lng; updatedAt = m.timestamp; }

@@ -5,6 +5,10 @@ import { useDeviceStore } from '../../store/useDeviceStore';
 import { useCrewStore } from '../../store/useCrewStore';
 import type { Message } from '../../types/messages';
 
+// One radio write at a time, in the order they were sent. Chat used to drop a
+// second message typed while the first was still going out.
+let queue: Promise<unknown> = Promise.resolve();
+
 export type SendResult =
   | { ok: true; message: Message }
   | { ok: false; reason: 'not-ready' | 'failed'; message: Message | null };
@@ -33,7 +37,9 @@ export async function sendCrewMessage(
   const store = useMessagesStore.getState();
   store.addMessage(message);
   try {
-    const packetId = await bleService.sendText(text, channelIndex, { replyId: opts.replyTo });
+    const write = queue.then(() => bleService.sendText(text, channelIndex, { replyId: opts.replyTo }));
+    queue = write.catch(() => {});
+    const packetId = await write;
     useMessagesStore.getState().markSent(selfId, packetId);
     return { ok: true, message: { ...message, sendStatus: 'sent', packetId } };
   } catch (e) {
