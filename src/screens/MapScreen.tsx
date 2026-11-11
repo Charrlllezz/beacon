@@ -1,5 +1,8 @@
 import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, Pressable, Modal, TextInput, ScrollView, Alert } from 'react-native';
+import {
+  View, StyleSheet, Text, TouchableOpacity, Pressable, Modal, TextInput, ScrollView, Alert,
+  KeyboardAvoidingView, Platform,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import MapView, { Marker, UrlTile, PROVIDER_DEFAULT } from 'react-native-maps';
@@ -427,17 +430,28 @@ export default function MapScreen() {
         animationType="slide"
         onRequestClose={() => setTagCoord(null)}
       >
-        <Pressable style={styles.sheetBackdrop} onPress={() => setTagCoord(null)}>
-          <Pressable style={styles.sheetContent} onPress={() => {}}>
-            {tagCoord && (
-              <TagLocationSheet
-                coordinate={tagCoord}
-                onSubmit={handleTagSubmit}
-                onCancel={() => setTagCoord(null)}
-              />
-            )}
+        {/* Lifts the sheet above the keyboard, which otherwise covered it all
+            while you typed the name. accessible={false}: a Pressable is one
+            VoiceOver element by default, which hid the sheet's controls. */}
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <Pressable style={styles.sheetBackdrop} onPress={() => setTagCoord(null)} accessible={false}>
+            <Pressable
+              style={styles.sheetContent}
+              onPress={() => {}}
+              accessible={false}
+              accessibilityViewIsModal
+              onAccessibilityEscape={() => setTagCoord(null)}
+            >
+              {tagCoord && (
+                <TagLocationSheet
+                  coordinate={tagCoord}
+                  onSubmit={handleTagSubmit}
+                  onCancel={() => setTagCoord(null)}
+                />
+              )}
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       <FirstOpenTip
