@@ -1,11 +1,12 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import type { SFSymbol } from 'expo-symbols';
 import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
 import type { TagMessage } from '../../types/messages';
 import type { TagCategory } from '../../types/festival';
 import { timeAgo } from '../../utils/time';
 import { haversineDistance, formatDistance } from '../../utils/coordinates';
+import { useNavigation } from '@react-navigation/native';
 import { useCrewStore } from '../../store/useCrewStore';
 import { festivalConfig } from '../../services/festival/FestivalConfig';
 import { glassCard } from '../ui/Glass';
@@ -38,12 +39,10 @@ export default function TagCard({ message, isMine }: Props) {
 
   const nearestStage = festivalConfig.getNearestStage(message.lat, message.lng);
 
+  const navigation = useNavigation();
   const openInMaps = () => {
-    const url = Platform.select({
-      ios: `maps:?daddr=${message.lat},${message.lng}`,
-      default: `geo:${message.lat},${message.lng}?q=${message.lat},${message.lng}`,
-    });
-    Linking.openURL(url);
+    useCrewStore.getState().setFocusPoint({ lat: message.lat, lng: message.lng, kind: 'tag', label: message.name });
+    (navigation as any).navigate('Map');
   };
 
   return (

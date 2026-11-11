@@ -14,7 +14,7 @@ import { DEMO } from '../config/demo';
 import Icon from '../components/ui/Icon';
 import Glass from '../components/ui/Glass';
 import type { CrewMember } from '../types/crew';
-import { useCrewStore } from '../store/useCrewStore';
+import { useCrewStore, type FocusPoint } from '../store/useCrewStore';
 import { useTagStore } from '../store/useTagStore';
 import { festivalConfig } from '../services/festival/FestivalConfig';
 import RNDVUHeader from '../components/common/RNDVUHeader';
@@ -146,14 +146,20 @@ export default function MapScreen() {
   const myLocation = useCrewStore(s => s.myLocation);
   const focusNodeId = useCrewStore(s => s.focusNodeId);
   const setFocusNode = useCrewStore(s => s.setFocusNode);
+  const focusPoint = useCrewStore(s => s.focusPoint);
+  // The last rally/SOS spot opened from chat, pinned until another replaces it.
+  const [droppedPin, setDroppedPin] = useState<FocusPoint | null>(null);
   // Sent here to see a friend ("Show on map"): show them, not the first-visit
   // tutorial. The tutorial waits for the next time you open the map.
-  const [tipDeferred, setTipDeferred] = useState(focusNodeId !== null);
-  React.useEffect(() => { if (focusNodeId !== null) setTipDeferred(true); }, [focusNodeId]);
+  const [tipDeferred, setTipDeferred] = useState(focusNodeId !== null || focusPoint !== null);
+  React.useEffect(() => {
+    if (focusNodeId !== null || focusPoint !== null) setTipDeferred(true);
+  }, [focusNodeId, focusPoint]);
   // Decided on arrival: clearing it on the way out would pop the tutorial
   // (a Modal) over whichever tab you went to.
   useFocusEffect(useCallback(() => {
-    setTipDeferred(useCrewStore.getState().focusNodeId !== null);
+    const { focusNodeId: node, focusPoint: point } = useCrewStore.getState();
+    setTipDeferred(node !== null || point !== null);
   }, []));
   const tags = useTagStore(s => s.tags);
   const addTag = useTagStore(s => s.addTag);
@@ -246,13 +252,27 @@ export default function MapScreen() {
     setTimeout(() => setFocusNode(null), 600);
   }, [focusNodeId]);
 
+  // Focus on a spot when sent here from a chat card's "Open Map"
+  React.useEffect(() => {
+    if (!focusPoint) return;
+    if (focusPoint.kind !== 'tag') setDroppedPin(focusPoint);
+    mapRef.current?.animateToRegion({
+      latitude: focusPoint.lat,
+      longitude: focusPoint.lng,
+      latitudeDelta: 0.002,
+      longitudeDelta: 0.002,
+    }, 500);
+    setTimeout(() => useCrewStore.getState().setFocusPoint(null), 600);
+  }, [focusPoint]);
+
   // Center on current location when the tab gains focus, and only then. Read
   // the store directly: depending on myLocation re-ran this on every 5 m GPS
   // update, snapping the map back to you while you panned to look at the
   // crew, and clearing focusNodeId re-ran it too, undoing "show on map".
   useFocusEffect(
     useCallback(() => {
-      if (useCrewStore.getState().focusNodeId) return; // crew-focus effect handles this case
+      const { focusNodeId: node, focusPoint: point } = useCrewStore.getState();
+      if (node || point) return; // the focus effects handle these cases
 
       const timer = setTimeout(() => {
         const loc = useCrewStore.getState().myLocation;
@@ -345,7 +365,14 @@ export default function MapScreen() {
           // below is satellite imagery, and the dark map has no offline copy.
           mapType={DEMO ? 'mutedStandard' : isNearVenue ? 'satellite' : 'standard'}
           userInterfaceStyle="dark"
-          initialRegion={{
+          // First visit straight from a chat card: start on that spot, since
+          // the map isn't ready to animate yet.
+          initialRegion={focusPoint ? {
+            latitude: focusPoint.lat,
+            longitude: focusPoint.lng,
+            latitudeDelta: 0.002,
+            longitudeDelta: 0.002,
+          } : {
             latitude: hasFix ? myLocation!.lat : config.venue.center.lat,
             longitude: hasFix ? myLocation!.lng : config.venue.center.lng,
             latitudeDelta: 0.006,
@@ -379,6 +406,14 @@ export default function MapScreen() {
           {filteredTags.map(tag => (
             <TaggedPOIPin key={tag.id} poi={tag} onPress={handleSearchResult} />
           ))}
+
+          {droppedPin && (
+            <Marker
+              coordinate={{ latitude: droppedPin.lat, longitude: droppedPin.lng }}
+              title={droppedPin.label}
+              pinColor={droppedPin.kind === 'sos' ? Colors.error : Colors.primary}
+            />
+          )}
 
           {/* Self location handled by showsUserLocation (native blue dot) */}
 

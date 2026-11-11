@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, FontSize, BorderRadius, Fonts, Gradients } from '../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts, Gradients, crewColor } from '../config/theme';
 import Icon from '../components/ui/Icon';
 import GradientButton from '../components/ui/GradientButton';
 import { glassCard } from '../components/ui/Glass';
@@ -66,6 +66,46 @@ function findConflicts(
   });
 }
 
+const STACK_MAX = 4;
+
+/** Who's going to a set: overlapping avatars in each friend's colour, then names. */
+function CrewGoing({ crew, crewSize }: { crew: { nodeId: number; nodeName: string }[]; crewSize: number }) {
+  const members = useCrewStore(s => s.crewMembers);
+  const shown = crew.slice(0, STACK_MAX);
+  const extra = crew.length - shown.length;
+  const names = crew.map(g => members[g.nodeId]?.shortName ?? g.nodeName);
+  const label = crewSize > 1 && crew.length >= crewSize
+    ? 'Whole crew going'
+    : names.length <= 2
+      ? `${names.join(' & ')} going`
+      : `${names.slice(0, 2).join(', ')} +${names.length - 2} going`;
+
+  return (
+    <View style={styles.goingCrewRow}>
+      <View style={styles.stack}>
+        {shown.map((g, i) => {
+          const m = members[g.nodeId];
+          const color = crewColor(g.nodeId, m?.color);
+          return (
+            <View
+              key={g.nodeId}
+              style={[styles.stackAvatar, { backgroundColor: color, marginLeft: i === 0 ? 0 : -7, zIndex: STACK_MAX - i }]}
+            >
+              <Text style={styles.stackInitials}>{(m?.shortName ?? g.nodeName).slice(0, 1).toUpperCase()}</Text>
+            </View>
+          );
+        })}
+        {extra > 0 && (
+          <View style={[styles.stackAvatar, styles.stackMore, { marginLeft: -7 }]}>
+            <Text style={styles.stackMoreText}>+{extra}</Text>
+          </View>
+        )}
+      </View>
+      <Text style={[styles.goingCrewText, label === 'Whole crew going' && styles.goingCrewAll]}>{label}</Text>
+    </View>
+  );
+}
+
 export default function ScheduleScreen() {
   const [selectedDay, setSelectedDay] = useState(DEMO ? DEMO_LINEUP_DAY : 0); // default Fri
   const [pendingPick, setPendingPick] = useState<{ stage: Stage; slot: ScheduleSlot } | null>(null);
@@ -86,6 +126,7 @@ export default function ScheduleScreen() {
   const { toggleMyGoing, isMyGoing: checkMyGoing, getGoingForArtist, removeGoingEntry, myGoingPicks } = useScheduleStore();
   const { myNodeNum } = useDeviceStore();
   const crewMembers = useCrewStore(s => s.crewMembers);
+  const crewSize = Object.values(crewMembers).filter(m => !m.isSelf).length;
   const addMessage = useMessagesStore(s => s.addMessage);
 
   const myName = myNodeNum ? (crewMembers[myNodeNum]?.longName ?? 'You') : 'You';
@@ -332,12 +373,7 @@ export default function ScheduleScreen() {
                         {slot.artistName}
                       </Text>
                       {goingCrew.length > 0 && (
-                        <View style={styles.goingCrewRow}>
-                          <Icon name="person.2.fill" size={12} color={Colors.pink} />
-                          <Text style={styles.goingCrewText}>
-                            {goingCrew.map(g => g.nodeName).join(', ')} going
-                          </Text>
-                        </View>
+                        <CrewGoing crew={goingCrew} crewSize={crewSize} />
                       )}
                     </View>
                     <TouchableOpacity
@@ -542,8 +578,18 @@ const styles = StyleSheet.create({
   conflictLabel: { color: Colors.warning, fontFamily: Fonts.rounded, fontSize: FontSize.xs + 1, fontWeight: '800' },
   artistName: { color: Colors.textPrimary, fontSize: FontSize.md + 1, fontWeight: '600' },
   artistNameNow: { fontWeight: '800' },
-  goingCrewRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
-  goingCrewText: { color: Colors.textSecondary, fontSize: FontSize.xs + 1 },
+  goingCrewRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 7 },
+  goingCrewText: { color: Colors.textSecondary, fontSize: FontSize.xs + 1, fontFamily: Fonts.rounded, fontWeight: '600' },
+  goingCrewAll: { color: Colors.pink },
+  stack: { flexDirection: 'row', alignItems: 'center' },
+  stackAvatar: {
+    width: 22, height: 22, borderRadius: 11,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: Colors.surface,
+  },
+  stackInitials: { color: '#1a1622', fontSize: 10, fontWeight: '800', fontFamily: Fonts.rounded },
+  stackMore: { backgroundColor: Colors.surfaceElevated },
+  stackMoreText: { color: Colors.textSecondary, fontSize: 9, fontWeight: '700', fontFamily: Fonts.rounded },
   goingBtn: {
     flexDirection: 'row',
     alignItems: 'center',

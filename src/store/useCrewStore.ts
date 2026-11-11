@@ -22,6 +22,14 @@ function scheduleSave() {
   }, PERSIST_DEBOUNCE_MS);
 }
 
+export interface FocusPoint {
+  lat: number;
+  lng: number;
+  // Tags already have a pin on the map; rally and SOS spots get one dropped.
+  kind: 'tag' | 'rally' | 'sos';
+  label?: string;
+}
+
 interface CrewState {
   crewMembers: Record<number, CrewMember>;
   myLocation: { lat: number; lng: number } | null;
@@ -30,6 +38,8 @@ interface CrewState {
   myLocationIsPhone: boolean;
   myColor: string | null;
   focusNodeId: number | null;
+  // A spot to show on the Map tab, sent from a chat card ("Open Map").
+  focusPoint: FocusPoint | null;
   sortMode: CrewSortMode;
 
   upsertMember: (member: Partial<CrewMember> & { nodeId: number }) => void;
@@ -44,6 +54,7 @@ interface CrewState {
   loadMyColor: () => Promise<void>;
   loadCrewMembers: () => Promise<void>;
   setFocusNode: (nodeId: number | null) => void;
+  setFocusPoint: (point: FocusPoint | null) => void;
   setSortMode: (mode: CrewSortMode) => void;
   getOnlineMembers: () => CrewMember[];
   getSortedMembers: () => CrewMember[];
@@ -58,6 +69,7 @@ export const useCrewStore = create<CrewState>((set, get) => ({
   myLocationIsPhone: false,
   myColor: null,
   focusNodeId: null,
+  focusPoint: null,
   sortMode: 'alpha' as CrewSortMode,
 
   upsertMember: (partial) =>
@@ -165,6 +177,7 @@ export const useCrewStore = create<CrewState>((set, get) => ({
     }),
 
   setFocusNode: (nodeId) => set({ focusNodeId: nodeId }),
+  setFocusPoint: (point) => set({ focusPoint: point }),
 
   setSortMode: (mode) => set({ sortMode: mode }),
 

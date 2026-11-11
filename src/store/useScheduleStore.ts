@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DEMO, DEMO_GOING_ENTRIES, DEMO_MY_PICKS } from '../config/demo';
 
 const GOING_KEY = 'rndvu_my_going_picks';
 const ENTRIES_KEY = 'rndvu_going_entries';
@@ -94,6 +95,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   loadMyGoingPicks: async (festivalId) => {
+    if (DEMO) {
+      set({ myGoingPicks: DEMO_MY_PICKS, goingEntries: DEMO_GOING_ENTRIES });
+      return;
+    }
     try {
       const storedFor = await AsyncStorage.getItem(PICKS_FESTIVAL_KEY);
       if (storedFor !== festivalId) {

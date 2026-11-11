@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, TouchableOpacity, Linking, Platform } from 'react-native';
+import { View, Text, StyleSheet, Animated, TouchableOpacity } from 'react-native';
 import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
 import type { SOSMessage } from '../../types/messages';
 import { timeAgo } from '../../utils/time';
 import { haversineDistance, formatDistance } from '../../utils/coordinates';
+import { useNavigation } from '@react-navigation/native';
 import { useCrewStore } from '../../store/useCrewStore';
 import { useMessagesStore } from '../../store/useMessagesStore';
 import { festivalConfig } from '../../services/festival/FestivalConfig';
@@ -46,12 +47,10 @@ export default function SOSCard({ message, isMine }: Props) {
 
   const nearestStage = festivalConfig.getNearestStage(thread.lat, thread.lng);
 
+  const navigation = useNavigation();
   const openInMaps = () => {
-    const url = Platform.select({
-      ios: `maps:?daddr=${thread.lat},${thread.lng}`,
-      default: `geo:${thread.lat},${thread.lng}?q=${thread.lat},${thread.lng}`,
-    });
-    Linking.openURL(url);
+    useCrewStore.getState().setFocusPoint({ lat: thread.lat, lng: thread.lng, kind: 'sos', label: 'SOS' });
+    (navigation as any).navigate('Map');
   };
 
   // A repeat of an SOS that already has a card.
