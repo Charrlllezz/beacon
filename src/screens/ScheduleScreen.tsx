@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
 import { festivalConfig } from '../services/festival/FestivalConfig';
 import { useNow } from '../utils/useNow';
+import { DEMO, DEMO_LINEUP_DAY, lineupNow } from '../config/demo';
 import { useScheduleStore } from '../store/useScheduleStore';
 import { useDeviceStore } from '../store/useDeviceStore';
 import { useCrewStore } from '../store/useCrewStore';
@@ -62,7 +63,7 @@ function findConflicts(
 }
 
 export default function ScheduleScreen() {
-  const [selectedDay, setSelectedDay] = useState(0); // default Fri
+  const [selectedDay, setSelectedDay] = useState(DEMO ? DEMO_LINEUP_DAY : 0); // default Fri
   const [pendingPick, setPendingPick] = useState<{ stage: Stage; slot: ScheduleSlot } | null>(null);
   const [conflicts, setConflicts] = useState<ConflictInfo[]>([]);
   const [keptBothKeys, setKeptBothKeys] = useState<Set<string>>(new Set());
@@ -189,7 +190,7 @@ export default function ScheduleScreen() {
 
   const query = searchQuery.toLowerCase().trim();
   // Ticks, so LIVE and finished sets update while you're looking at the tab.
-  const now = useNow();
+  const now = lineupNow(useNow());
 
   const filteredStageData = useMemo(() => {
     return stages

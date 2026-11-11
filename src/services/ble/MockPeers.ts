@@ -1,3 +1,4 @@
+import { DEMO } from '../../config/demo';
 import type { MockFirmware } from './MockFirmware';
 import type { NodeInfo } from '../../types/mesh';
 import { PortNum } from '../../types/mesh';
@@ -138,6 +139,15 @@ export const COACHELLA_MESSAGES: Array<{ nodeId: number; text: string; delay: nu
   { nodeId: 0x5e6f80, text: 'heading to yuma in 10',                                  delay: 65000 },
 ];
 
+/** Pitch demo only: crew marking last year's Saturday sets, for the Lineup's crew picks. */
+export const DEMO_GOING: Array<{ nodeId: number; text: string; delay: number }> = [
+  { nodeId: 0x5e6f80, text: 'MF:G:sahara:rezz',             delay: 17000 },
+  { nodeId: 0x4d5e6f, text: 'MF:G:main:the-strokes',        delay: 33000 },
+  { nodeId: 0x1a2b3c, text: 'MF:G:main:justin-bieber',      delay: 50000 },
+  { nodeId: 0x2b3c4d, text: 'MF:G:main:justin-bieber',      delay: 58000 },
+  { nodeId: 0x3c4d5e, text: 'MF:G:quasar:david-guetta',     delay: 70000 },
+];
+
 // ── Helpers for scenario construction ───────────────────────────────────────
 
 /** Seed firmware.nodeDB with the scene's peers (static entries before drain). */
@@ -168,7 +178,7 @@ export function startCoachellaScene(firmware: MockFirmware): VirtualPeer[] {
     }
   }
 
-  for (const msg of COACHELLA_MESSAGES) {
+  for (const msg of DEMO ? [...COACHELLA_MESSAGES, ...DEMO_GOING] : COACHELLA_MESSAGES) {
     const peer = peers.find(p => p.nodeId === msg.nodeId);
     if (!peer) continue;
     peer.scheduleOnce(() => peer.sendText(firmware, msg.text), msg.delay);
