@@ -3,7 +3,11 @@ import {
   ScrollView, View, Text, StyleSheet, TouchableOpacity, Modal, Pressable, TextInput, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts, Gradients } from '../config/theme';
+import Icon from '../components/ui/Icon';
+import GradientButton from '../components/ui/GradientButton';
+import { glassCard } from '../components/ui/Glass';
 import { festivalConfig } from '../services/festival/FestivalConfig';
 import { useNow } from '../utils/useNow';
 import { DEMO, DEMO_LINEUP_DAY, lineupNow } from '../config/demo';
@@ -219,7 +223,7 @@ export default function ScheduleScreen() {
       {/* Search bar */}
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
-          <Text style={styles.searchIcon}>🔍</Text>
+          <View style={styles.searchIcon}><Icon name="magnifyingglass" size={15} color={Colors.textMuted} /></View>
           <TextInput
             style={styles.searchInput}
             placeholder="Search artists…"
@@ -230,8 +234,8 @@ export default function ScheduleScreen() {
             autoCorrect={false}
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Text style={styles.searchClear}>✕</Text>
+            <TouchableOpacity onPress={() => setSearchQuery('')} accessibilityLabel="Clear search" style={styles.searchClear}>
+              <Icon name="xmark.circle.fill" size={16} color={Colors.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -239,6 +243,7 @@ export default function ScheduleScreen() {
           style={[styles.myScheduleBtn, myScheduleOnly && styles.myScheduleBtnActive]}
           onPress={() => setMyScheduleOnly(v => !v)}
         >
+          <Icon name="star" filled={myScheduleOnly} size={13} color={myScheduleOnly ? Colors.primary : Colors.textSecondary} />
           <Text style={[styles.myScheduleBtnText, myScheduleOnly && styles.myScheduleBtnTextActive]}>
             My Sets
           </Text>
@@ -294,13 +299,15 @@ export default function ScheduleScreen() {
           const nowPlaying = festivalConfig.getNowPlaying(stage.id, new Date(now));
           return (
             <View key={stage.id} style={styles.stageCard}>
+              <View style={[styles.stageAccent, { backgroundColor: stage.color }]} />
               <View style={styles.stageHeader}>
                 <View style={[styles.colorDot, { backgroundColor: stage.color }]} />
                 <Text style={styles.stageName}>{stage.name}</Text>
                 {nowPlaying && (
-                  <View style={styles.liveBadge}>
-                    <Text style={styles.liveBadgeText}>● LIVE</Text>
-                  </View>
+                  <LinearGradient colors={Gradients.sunset} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.liveBadge}>
+                    <View style={styles.liveDot} />
+                    <Text style={styles.liveBadgeText}>LIVE</Text>
+                  </LinearGradient>
                 )}
               </View>
 
@@ -325,17 +332,25 @@ export default function ScheduleScreen() {
                         {slot.artistName}
                       </Text>
                       {goingCrew.length > 0 && (
-                        <Text style={styles.goingCrewText}>
-                          🎉 {goingCrew.map(g => g.nodeName).join(', ')} going
-                        </Text>
+                        <View style={styles.goingCrewRow}>
+                          <Icon name="person.2.fill" size={12} color={Colors.pink} />
+                          <Text style={styles.goingCrewText}>
+                            {goingCrew.map(g => g.nodeName).join(', ')} going
+                          </Text>
+                        </View>
                       )}
                     </View>
                     <TouchableOpacity
                       style={[styles.goingBtn, isMyGoing && styles.goingBtnActive]}
                       onPress={() => handleGoing(stage, slot)}
+                      accessibilityLabel={isMyGoing ? 'Going' : "I'm Going"}
                     >
+                      {isMyGoing && (
+                        <LinearGradient colors={Gradients.sunset} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
+                      )}
+                      {isMyGoing && <Icon name="checkmark" size={11} color="#fff" weight="bold" />}
                       <Text style={[styles.goingBtnText, isMyGoing && styles.goingBtnTextActive]}>
-                        {isMyGoing ? '✓ Going' : "I'm Going"}
+                        {isMyGoing ? 'Going' : "I'm Going"}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -350,9 +365,9 @@ export default function ScheduleScreen() {
         storageKey="rndvu_tip_lineup"
         title="Festival Lineup"
         tips={[
-          { icon: '✅', title: 'Mark Your Sets', description: "Tap 'I'm Going' on sets you don't want to miss" },
-          { icon: '👥', title: 'Crew Picks', description: 'See which sets your crew is going to with the party icon' },
-          { icon: '⚠️', title: 'Conflicts', description: "We'll let you know when your picks overlap so you can decide" },
+          { icon: 'checkmark.circle', title: 'Mark Your Sets', description: "Tap 'I'm Going' on sets you don't want to miss" },
+          { icon: 'person.2', title: 'Crew Picks', description: 'See which sets your crew is going to with the party icon' },
+          { icon: 'exclamationmark.triangle', title: 'Conflicts', description: "We'll let you know when your picks overlap so you can decide" },
         ]}
       />
 
@@ -387,15 +402,9 @@ export default function ScheduleScreen() {
             ))}
 
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.btnCancel} onPress={handleCancel}>
-                <Text style={styles.btnCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.btnKeepBoth} onPress={handleKeepBoth}>
-                <Text style={styles.btnKeepBothText}>Keep Both</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.btnReplace} onPress={handleReplace}>
-                <Text style={styles.btnReplaceText}>Replace</Text>
-              </TouchableOpacity>
+              <GradientButton compact style={styles.modalBtn} variant="ghost" label="Cancel" onPress={handleCancel} />
+              <GradientButton compact style={styles.modalBtn} variant="ghost" label="Keep Both" onPress={handleKeepBoth} />
+              <GradientButton compact style={styles.modalBtn} label="Replace" onPress={handleReplace} />
             </View>
           </Pressable>
         </Pressable>
@@ -417,34 +426,36 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    height: 38,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm + 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
+    height: 40,
   },
-  searchIcon: { fontSize: 14, marginRight: 6 },
+  searchIcon: { marginRight: 8 },
   searchInput: {
     flex: 1,
     color: Colors.textPrimary,
     fontSize: FontSize.sm,
     paddingVertical: 0,
   },
-  searchClear: { color: Colors.textMuted, fontSize: 14, paddingHorizontal: 4 },
+  searchClear: { paddingHorizontal: 4 },
   myScheduleBtn: {
+    flexDirection: 'row',
+    gap: 5,
     paddingHorizontal: 14,
-    borderRadius: BorderRadius.sm,
+    borderRadius: BorderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    height: 38,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
+    height: 40,
   },
-  myScheduleBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  myScheduleBtnText: { color: Colors.textSecondary, fontSize: FontSize.xs, fontWeight: '700' },
-  myScheduleBtnTextActive: { color: '#fff' },
+  myScheduleBtnActive: { backgroundColor: Colors.primary + '2e', borderColor: Colors.primary + '88' },
+  myScheduleBtnText: { color: Colors.textSecondary, fontFamily: Fonts.rounded, fontSize: FontSize.xs + 1, fontWeight: '700' },
+  myScheduleBtnTextActive: { color: Colors.primary },
   stageFilterWrap: {
     height: 42,
     marginTop: Spacing.sm,
@@ -461,13 +472,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     height: 34,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
+    gap: 6,
   },
   stageChipDot: { width: 8, height: 8, borderRadius: 4 },
-  stageChipText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600' },
+  stageChipText: { color: Colors.textSecondary, fontFamily: Fonts.rounded, fontSize: FontSize.sm, fontWeight: '700' },
   emptyFilter: { alignItems: 'center', paddingTop: 60 },
   emptyFilterText: { color: Colors.textMuted, fontSize: FontSize.sm },
   daySelector: {
@@ -479,64 +490,74 @@ const styles = StyleSheet.create({
   dayTab: {
     flex: 1,
     paddingVertical: 9,
-    borderRadius: BorderRadius.sm,
+    borderRadius: BorderRadius.md,
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
   },
-  dayTabActive: { backgroundColor: Colors.primary },
-  dayTabText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600' },
-  dayTabTextActive: { color: '#fff' },
+  dayTabActive: { backgroundColor: Colors.primary + '2e', borderColor: Colors.primary + '88' },
+  dayTabText: { color: Colors.textSecondary, fontFamily: Fonts.rounded, fontSize: FontSize.md, fontWeight: '700' },
+  dayTabTextActive: { color: Colors.primary },
   content: { padding: Spacing.md, paddingBottom: 32 },
   stageCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
+    ...glassCard,
     marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: '#1e1d2a',
     overflow: 'hidden',
   },
+  // Stage colour accent down the card's left edge.
+  stageAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 3 },
   stageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e1d2a',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
   },
-  colorDot: { width: 12, height: 12, borderRadius: 6, marginRight: Spacing.sm },
-  stageName: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textPrimary, flex: 1 },
+  colorDot: { width: 10, height: 10, borderRadius: 5, marginRight: Spacing.sm },
+  stageName: { fontFamily: Fonts.rounded, fontSize: FontSize.lg, fontWeight: '800', color: Colors.textPrimary, flex: 1 },
   liveBadge: {
-    backgroundColor: Colors.error + '22',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     borderRadius: BorderRadius.full,
+    overflow: 'hidden',
   },
-  liveBadgeText: { color: Colors.error, fontSize: 10, fontWeight: '800' },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' },
+  liveBadgeText: { color: '#fff', fontFamily: Fonts.rounded, fontSize: 11, fontWeight: '900', letterSpacing: 0.6 },
   artistRow: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: '#0f0f1a',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
   },
-  artistRowNow: { backgroundColor: Colors.primary + '11' },
+  artistRowNow: { backgroundColor: Colors.primary + '14' },
   artistInfo: { flex: 1 },
   artistMeta: { flexDirection: 'row', alignItems: 'center', marginBottom: 3 },
-  artistTime: { color: Colors.textSecondary, fontSize: FontSize.xs },
-  nowLabel: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '700' },
-  conflictLabel: { color: Colors.warning, fontSize: FontSize.xs, fontWeight: '700' },
-  artistName: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '600' },
+  artistTime: { color: Colors.textSecondary, fontFamily: Fonts.rounded, fontSize: FontSize.xs + 1, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  nowLabel: { color: Colors.primary, fontFamily: Fonts.rounded, fontSize: FontSize.xs + 1, fontWeight: '800' },
+  conflictLabel: { color: Colors.warning, fontFamily: Fonts.rounded, fontSize: FontSize.xs + 1, fontWeight: '800' },
+  artistName: { color: Colors.textPrimary, fontSize: FontSize.md + 1, fontWeight: '600' },
   artistNameNow: { fontWeight: '800' },
-  goingCrewText: { color: Colors.textSecondary, fontSize: FontSize.xs, marginTop: 4 },
+  goingCrewRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
+  goingCrewText: { color: Colors.textSecondary, fontSize: FontSize.xs + 1 },
   goingBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: Colors.primary + '99',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: BorderRadius.full,
     marginLeft: Spacing.sm,
+    overflow: 'hidden',
   },
-  goingBtnActive: { backgroundColor: Colors.primary },
-  goingBtnText: { color: Colors.primary, fontSize: FontSize.xs, fontWeight: '700' },
+  goingBtnActive: { borderColor: 'transparent' },
+  goingBtnText: { color: Colors.primary, fontFamily: Fonts.rounded, fontSize: FontSize.xs + 1, fontWeight: '800' },
   goingBtnTextActive: { color: '#fff' },
   // Modal
   modalOverlay: {
@@ -550,12 +571,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surfaceElevated,
     borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.warning + '44',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.warning + '55',
   },
   modalTitle: {
     color: Colors.warning,
-    fontSize: FontSize.lg,
+    fontFamily: Fonts.rounded,
+    fontSize: FontSize.xl,
     fontWeight: '800',
     marginBottom: 6,
   },
@@ -567,7 +589,7 @@ const styles = StyleSheet.create({
   conflictItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     marginBottom: Spacing.sm,
@@ -581,31 +603,5 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginTop: Spacing.md,
   },
-  btnCancel: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  btnCancelText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '700' },
-  btnKeepBoth: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.primary,
-  },
-  btnKeepBothText: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
-  btnReplace: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-  },
-  btnReplaceText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '700' },
+  modalBtn: { flex: 1 },
 });

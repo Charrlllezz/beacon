@@ -8,7 +8,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import MapView, { Marker, UrlTile, PROVIDER_DEFAULT } from 'react-native-maps';
 import { getTilePath } from '../services/map/TilePrefetch';
 import { useOfflineMapStore } from '../store/useOfflineMapStore';
-import { Colors, Spacing, FontSize, BorderRadius, CREW_PALETTE, crewColor } from '../config/theme';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts, CREW_PALETTE, crewColor } from '../config/theme';
+import { DEMO } from '../config/demo';
+import Icon from '../components/ui/Icon';
+import Glass from '../components/ui/Glass';
+import type { CrewMember } from '../types/crew';
 import { useCrewStore } from '../store/useCrewStore';
 import { useTagStore } from '../store/useTagStore';
 import { festivalConfig } from '../services/festival/FestivalConfig';
@@ -45,6 +50,93 @@ const CATEGORY_FILTERS: { key: TagCategory; color: string; label: string }[] = [
 ];
 
 export const CREW_COLORS = CREW_PALETTE;
+
+// Pins glide: a friend's pin moves to its new spot over this long instead of
+// jumping, and one soft ring pulses out from it so you see who just updated.
+const GLIDE_MS = 800;
+const PULSE_MS = 900;
+
+function easeInOut(t: number): number {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+interface CrewPinProps {
+  member: CrewMember;
+  now: number;
+  onPress: (lat: number, lng: number) => void;
+}
+
+/**
+ * One friend on the map. Holds the coordinate it's showing and tweens it to
+ * the new one on each update (a few dozen re-renders of one marker, no native
+ * animation API needed). The Marker inside is re-keyed when the age label
+ * changes (tracksViewChanges is off); this component, and so the shown
+ * position, survives that.
+ */
+function CrewPin({ member, now, onPress }: CrewPinProps) {
+  const target = { latitude: member.lat!, longitude: member.lng! };
+  const [coord, setCoord] = useState(target);
+  const shown = useRef(target);
+  const [moving, setMoving] = useState(false);
+  const ring = useSharedValue(1);
+
+  useEffect(() => {
+    const from = shown.current;
+    if (from.latitude === target.latitude && from.longitude === target.longitude) return;
+    const began = Date.now();
+    let frame = 0;
+    let settle: ReturnType<typeof setTimeout> | null = null;
+    setMoving(true);
+    ring.value = 0;
+    ring.value = withTiming(1, { duration: PULSE_MS, easing: Easing.out(Easing.quad) });
+    const step = () => {
+      const e = easeInOut(Math.min(1, (Date.now() - began) / GLIDE_MS));
+      const c = {
+        latitude: from.latitude + (target.latitude - from.latitude) * e,
+        longitude: from.longitude + (target.longitude - from.longitude) * e,
+      };
+      shown.current = c;
+      setCoord(c);
+      if (e < 1) frame = requestAnimationFrame(step);
+      else settle = setTimeout(() => setMoving(false), PULSE_MS - GLIDE_MS + 100);
+    };
+    frame = requestAnimationFrame(step);
+    return () => { cancelAnimationFrame(frame); if (settle) clearTimeout(settle); };
+  }, [target.latitude, target.longitude]);
+
+  const ringStyle = useAnimatedStyle(() => ({
+    opacity: 0.6 * (1 - ring.value),
+    transform: [{ scale: 1 + 1.6 * ring.value }],
+  }));
+
+  const bg = crewColor(member.nodeId, member.color);
+  const initials = member.shortName.slice(0, 2).toUpperCase();
+  const age = pinAge(member.locationAt, now);
+  return (
+    <Marker
+      // tracksViewChanges is off, so the key carries the label: a new label
+      // re-creates the marker and the view updates. On while it moves, so the
+      // pulse ring draws.
+      key={`${age.label}-${age.stale ? 's' : 'f'}`}
+      coordinate={coord}
+      tracksViewChanges={moving}
+      onPress={() => onPress(member.lat!, member.lng!)}
+    >
+      <View style={styles.crewPinContainer}>
+        <View style={styles.crewPinStack}>
+          <Animated.View style={[styles.crewPinRing, { backgroundColor: bg }, ringStyle]} />
+          {/* Fade the pin, not its age label: on a stale pin the age is the
+              thing to read. */}
+          <View style={[styles.crewPinCircle, { backgroundColor: bg }, age.stale && styles.crewPinFaded, age.stale && styles.crewPinDashed]}>
+            <Text style={styles.crewPinText}>{initials}</Text>
+          </View>
+        </View>
+        <View style={[styles.crewPinTail, { borderTopColor: '#ffffff' }, age.stale && styles.crewPinFaded]} />
+        <Text style={[styles.crewPinAge, age.stale && styles.crewPinAgeStale]}>{age.label}</Text>
+      </View>
+    </Marker>
+  );
+}
 
 export default function MapScreen() {
   // Active festival (App.tsx remounts the tabs when it changes).
@@ -248,7 +340,11 @@ export default function MapScreen() {
           ref={mapRef}
           style={styles.map}
           provider={PROVIDER_DEFAULT}
-          mapType={isNearVenue ? 'satellite' : 'standard'}
+          // Demo: Apple's dark, muted map so the crew pins carry the colour.
+          // Real builds keep satellite at the venue: the offline tile cache
+          // below is satellite imagery, and the dark map has no offline copy.
+          mapType={DEMO ? 'mutedStandard' : isNearVenue ? 'satellite' : 'standard'}
+          userInterfaceStyle="dark"
           initialRegion={{
             latitude: hasFix ? myLocation!.lat : config.venue.center.lat,
             longitude: hasFix ? myLocation!.lng : config.venue.center.lng,
@@ -262,7 +358,7 @@ export default function MapScreen() {
           rotateEnabled={false}
         >
           {/* Offline satellite tiles - cached for festival use */}
-          {tilesReady && (
+          {tilesReady && !DEMO && (
             <UrlTile
               urlTemplate="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
               // Tiles are cached to z18; past that, scale them up instead
@@ -288,38 +384,19 @@ export default function MapScreen() {
 
           {/* Crew pins, labelled with how old the position is and faded once
               stale, so a 40-minute-old pin doesn't look live. */}
-          {crewWithLocation.map(member => {
-            const bg = crewColor(member.nodeId, member.color);
-            const initials = member.shortName.slice(0, 2).toUpperCase();
-            const age = pinAge(member.locationAt, now);
-            return (
-              <Marker
-                // tracksViewChanges is off, so the key carries the label:
-                // a new label re-creates the marker and the view updates.
-                key={`${member.nodeId}-${age.label}-${age.stale ? 's' : 'f'}`}
-                coordinate={{ latitude: member.lat!, longitude: member.lng! }}
-                tracksViewChanges={false}
-                onPress={() => {
-                  mapRef.current?.animateToRegion({
-                    latitude: member.lat!,
-                    longitude: member.lng!,
-                    latitudeDelta: 0.002,
-                    longitudeDelta: 0.002,
-                  }, 500);
-                }}
-              >
-                <View style={styles.crewPinContainer}>
-                  {/* Fade the pin, not its age label: on a stale pin the
-                      age is the thing to read. */}
-                  <View style={[styles.crewPinCircle, { backgroundColor: bg }, age.stale && styles.crewPinFaded, age.stale && styles.crewPinDashed]}>
-                    <Text style={styles.crewPinText}>{initials}</Text>
-                  </View>
-                  <View style={[styles.crewPinTail, { borderTopColor: bg }, age.stale && styles.crewPinFaded]} />
-                  <Text style={[styles.crewPinAge, age.stale && styles.crewPinAgeStale]}>{age.label}</Text>
-                </View>
-              </Marker>
-            );
-          })}
+          {crewWithLocation.map(member => (
+            <CrewPin
+              key={member.nodeId}
+              member={member}
+              now={now}
+              onPress={(lat, lng) => mapRef.current?.animateToRegion({
+                latitude: lat,
+                longitude: lng,
+                latitudeDelta: 0.002,
+                longitudeDelta: 0.002,
+              }, 500)}
+            />
+          ))}
         </MapView>
 
         {!hasFix && (
@@ -331,8 +408,8 @@ export default function MapScreen() {
         {/* Search & filter overlay */}
         <View style={styles.filterOverlay}>
           <View style={styles.searchRow}>
-            <View style={styles.searchBar}>
-              <Text style={styles.searchIcon}>&#x1F50D;</Text>
+            <Glass style={styles.searchBar} radius={BorderRadius.full}>
+              <View style={styles.searchIcon}><Icon name="magnifyingglass" size={15} color={Colors.textSecondary} /></View>
               <TextInput
                 style={styles.searchInput}
                 placeholder="Search tags..."
@@ -343,16 +420,19 @@ export default function MapScreen() {
                 returnKeyType="search"
               />
               {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery('')}>
-                  <Text style={styles.clearBtn}>✕</Text>
+                <TouchableOpacity onPress={() => setSearchQuery('')} accessibilityLabel="Clear search" style={styles.clearBtn}>
+                  <Icon name="xmark.circle.fill" size={16} color={Colors.textMuted} />
                 </TouchableOpacity>
               )}
-            </View>
+            </Glass>
             <TouchableOpacity
-              style={[styles.filterToggle, hasActiveFilters && styles.filterToggleActive]}
               onPress={() => setShowFilters(prev => !prev)}
+              accessibilityRole="button"
+              accessibilityLabel="Filters"
             >
-              <Text style={styles.filterToggleText}>☰</Text>
+              <Glass style={[styles.filterToggle, hasActiveFilters && styles.filterToggleActive]} radius={20}>
+                <Icon name="line.3.horizontal.decrease" size={18} color={hasActiveFilters ? Colors.primary : Colors.textPrimary} weight="semibold" />
+              </Glass>
             </TouchableOpacity>
           </View>
 
@@ -412,11 +492,14 @@ export default function MapScreen() {
 
         {/* Floating buttons */}
         <View style={styles.bottomBar}>
-          <TouchableOpacity style={styles.centerBtn} onPress={handleCenterOnMe}>
-            <Text style={styles.centerBtnText}>◎</Text>
+          <TouchableOpacity onPress={handleCenterOnMe} accessibilityRole="button" accessibilityLabel="Center on me">
+            <Glass style={styles.centerBtn} radius={22}>
+              <Icon name="location.fill" size={18} color={Colors.primary} />
+            </Glass>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.tagBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Tag Spot"
             onPress={() => {
               if (myLocation) {
                 hapticMedium();
@@ -424,7 +507,10 @@ export default function MapScreen() {
               }
             }}
           >
-            <Text style={styles.tagBtnText}>+ Tag Spot</Text>
+            <Glass style={styles.tagBtn} radius={BorderRadius.full}>
+              <Icon name="plus" size={15} color={Colors.primary} weight="bold" />
+              <Text style={styles.tagBtnText}>Tag Spot</Text>
+            </Glass>
           </TouchableOpacity>
         </View>
       </View>
@@ -466,10 +552,10 @@ export default function MapScreen() {
         deferred={tipDeferred}
         title="Your Crew Map"
         tips={[
-          { icon: '📍', title: 'Crew Pins', description: "The label under a pin says how old it is. Faded pins are over 15 minutes old: where they were, not where they are." },
-          { icon: '🔋', title: 'Phone dying?', description: PHONE_DEAD_TIP },
-          { icon: '🏷️', title: 'Tag Spots', description: 'Use the Tag Spot button to mark useful spots like water, food, or restrooms for your crew' },
-          { icon: '🔍', title: 'Search & Filter', description: 'Use the search bar and filter chips to find tagged locations' },
+          { icon: 'mappin.and.ellipse', title: 'Crew Pins', description: "The label under a pin says how old it is. Faded pins are over 15 minutes old: where they were, not where they are." },
+          { icon: 'battery.25percent', title: 'Phone dying?', description: PHONE_DEAD_TIP },
+          { icon: 'tag', title: 'Tag Spots', description: 'Use the Tag Spot button to mark useful spots like water, food, or restrooms for your crew' },
+          { icon: 'magnifyingglass', title: 'Search & Filter', description: 'Use the search bar and filter chips to find tagged locations' },
         ]}
       />
     </SafeAreaView>
@@ -512,24 +598,32 @@ const styles = StyleSheet.create({
   crewPinContainer: {
     alignItems: 'center',
   },
+  crewPinStack: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  crewPinRing: { position: 'absolute', width: 32, height: 32, borderRadius: 16 },
   crewPinCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2.5,
     borderColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.45,
+    shadowRadius: 5,
   },
-  crewPinText: { color: '#fff', fontWeight: '900', fontSize: 9 },
+  crewPinText: { color: '#1a1520', fontFamily: Fonts.rounded, fontWeight: '900', fontSize: 11 },
   crewPinAge: {
-    marginTop: 1,
-    fontSize: 9,
+    marginTop: 2,
+    fontFamily: Fonts.rounded,
+    fontSize: 10,
     fontWeight: '800',
     color: '#fff',
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    paddingHorizontal: 3,
-    borderRadius: 3,
+    backgroundColor: 'rgba(11, 10, 16, 0.78)',
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
     overflow: 'hidden',
   },
   crewPinAgeStale: { color: Colors.warning },
@@ -538,6 +632,7 @@ const styles = StyleSheet.create({
   noFixBanner: {
     position: 'absolute', bottom: Spacing.md, left: Spacing.md, right: 72,
     backgroundColor: Colors.overlay, borderRadius: BorderRadius.md,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.glassBorder,
     paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md,
   },
   noFixText: { color: Colors.textSecondary, fontSize: FontSize.xs },
@@ -546,10 +641,10 @@ const styles = StyleSheet.create({
     height: 0,
     borderLeftWidth: 5,
     borderRightWidth: 5,
-    borderTopWidth: 7,
+    borderTopWidth: 6,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    marginTop: -1,
+    marginTop: -2,
   },
   filterOverlay: {
     position: 'absolute',
@@ -566,36 +661,26 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface + 'ee',
-    borderRadius: BorderRadius.full,
     paddingHorizontal: Spacing.md,
-    height: 40,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    height: 42,
   },
-  searchIcon: { fontSize: 14, marginRight: Spacing.xs },
+  searchIcon: { marginRight: Spacing.sm },
   searchInput: {
     flex: 1,
     color: Colors.textPrimary,
     fontSize: FontSize.sm,
     padding: 0,
   },
-  clearBtn: { color: Colors.textSecondary, fontSize: 14, paddingLeft: Spacing.xs },
+  clearBtn: { paddingLeft: Spacing.xs },
   filterToggle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.surface + 'ee',
-    borderWidth: 1,
-    borderColor: Colors.border,
+    width: 42,
+    height: 42,
     alignItems: 'center',
     justifyContent: 'center',
   },
   filterToggleActive: {
     borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '22',
   },
-  filterToggleText: { color: Colors.textPrimary, fontSize: 18 },
   chipRow: {
     marginTop: Spacing.xs,
   },
@@ -606,20 +691,20 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.surface + 'ee',
+    gap: 6,
+    backgroundColor: 'rgba(22, 20, 28, 0.88)',
     borderRadius: BorderRadius.full,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    paddingVertical: 7,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
   },
   chipDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
   },
-  chipLabel: { color: Colors.textSecondary, fontSize: FontSize.xs, fontWeight: '600' },
+  chipLabel: { color: Colors.textSecondary, fontFamily: Fonts.rounded, fontSize: FontSize.xs + 1, fontWeight: '700' },
   clearFilters: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -628,10 +713,10 @@ const styles = StyleSheet.create({
   clearFiltersText: { color: Colors.textMuted, fontSize: FontSize.xs, fontWeight: '600' },
   searchResults: {
     marginTop: Spacing.xs,
-    backgroundColor: Colors.surface + 'f5',
+    backgroundColor: 'rgba(22, 20, 28, 0.96)',
     borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
     overflow: 'hidden',
   },
   searchResultItem: {
@@ -666,36 +751,18 @@ const styles = StyleSheet.create({
   centerBtn: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
   },
-  centerBtnText: { color: Colors.primary, fontSize: 22 },
   tagBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.full,
-    paddingVertical: 10,
+    gap: 6,
+    height: 44,
     paddingHorizontal: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.primary + '44',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
   },
-  tagBtnText: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
+  tagBtnText: { color: Colors.textPrimary, fontFamily: Fonts.rounded, fontSize: FontSize.md, fontWeight: '700' },
   sheetBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',

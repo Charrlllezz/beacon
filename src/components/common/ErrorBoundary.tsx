@@ -1,6 +1,8 @@
 import React, { Component, type ReactNode } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import { View, Text, StyleSheet } from 'react-native';
+import { Colors, Spacing, FontSize, Fonts } from '../../config/theme';
+import Icon from '../ui/Icon';
+import GradientButton from '../ui/GradientButton';
 
 interface Props {
   children: ReactNode;
@@ -27,14 +29,12 @@ export default class ErrorBoundary extends Component<Props, State> {
 
     return (
       <View style={styles.container}>
-        <Text style={styles.icon}>⚠</Text>
+        <View style={styles.icon}><Icon name="exclamationmark.triangle" size={40} color={Colors.warning} /></View>
         <Text style={styles.title}>Something went wrong</Text>
         <Text style={styles.message}>
           {this.state.error?.message ?? 'An unexpected error occurred'}
         </Text>
-        <TouchableOpacity style={styles.button} onPress={this.handleReset}>
-          <Text style={styles.buttonText}>Try Again</Text>
-        </TouchableOpacity>
+        <GradientButton label="Try Again" onPress={this.handleReset} style={styles.button} />
       </View>
     );
   }
@@ -48,10 +48,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: Spacing.xl,
   },
-  icon: { fontSize: 48, marginBottom: Spacing.md },
+  icon: { marginBottom: Spacing.md },
   title: {
+    fontFamily: Fonts.rounded,
     color: Colors.textPrimary,
-    fontSize: FontSize.lg,
+    fontSize: FontSize.xl,
     fontWeight: '700',
     marginBottom: Spacing.sm,
   },
@@ -61,11 +62,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: Spacing.lg,
   },
-  button: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.full,
-  },
-  buttonText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
+  button: { alignSelf: 'stretch' },
 });

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActionSheetIOS } from 'react-native';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
+import GradientButton from '../ui/GradientButton';
+import { glassCard } from '../ui/Glass';
 import { useCrewKeyStore } from '../../store/useCrewKeyStore';
 import { startCrew, leaveCrew, rekeyCrew } from '../../services/crew/crewActions';
 import { confirmJoin } from '../../services/crew/confirmJoin';
@@ -68,12 +70,8 @@ export default function CrewKeyCard() {
             </TouchableOpacity>
           </View>
           <View style={styles.buttons}>
-            <TouchableOpacity style={[styles.btn, styles.primary]} onPress={() => setInviting(true)}>
-              <Text style={styles.primaryText}>Invite</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.btn} onPress={() => setScanning(true)}>
-              <Text style={styles.btnText}>Join another</Text>
-            </TouchableOpacity>
+            <GradientButton compact label="Invite" icon="qrcode" onPress={() => setInviting(true)} style={styles.btn} />
+            <GradientButton compact variant="ghost" label="Join another" onPress={() => setScanning(true)} style={styles.btn} />
           </View>
           <InviteSheet crew={crew} visible={inviting} onClose={() => setInviting(false)} />
         </>
@@ -82,12 +80,8 @@ export default function CrewKeyCard() {
           <Text style={styles.label}>NO CREW YET</Text>
           <Text style={styles.body}>Start one and invite people, or scan a crew member's invite.</Text>
           <View style={styles.buttons}>
-            <TouchableOpacity style={[styles.btn, styles.primary]} onPress={askStart}>
-              <Text style={styles.primaryText}>Start a crew</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.btn} onPress={() => setScanning(true)}>
-              <Text style={styles.btnText}>Join with QR</Text>
-            </TouchableOpacity>
+            <GradientButton compact label="Start a crew" icon="plus" onPress={askStart} style={styles.btn} />
+            <GradientButton compact variant="ghost" label="Join with QR" icon="qrcode.viewfinder" onPress={() => setScanning(true)} style={styles.btn} />
           </View>
         </>
       )}
@@ -102,21 +96,14 @@ export default function CrewKeyCard() {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.surface, borderRadius: BorderRadius.md, padding: Spacing.md,
-    borderWidth: 1, borderColor: Colors.primary + '44', marginBottom: Spacing.md,
+    ...glassCard, padding: Spacing.md, marginBottom: Spacing.md,
   },
   row: { flexDirection: 'row', alignItems: 'flex-start' },
-  label: { color: Colors.textMuted, fontSize: FontSize.xs, fontWeight: '800', letterSpacing: 1.2 },
-  name: { color: Colors.textPrimary, fontSize: FontSize.lg, fontWeight: '800', marginTop: 2 },
+  label: { fontFamily: Fonts.rounded, color: Colors.textSecondary, fontSize: FontSize.xs, fontWeight: '700', letterSpacing: 1 },
+  name: { fontFamily: Fonts.rounded, color: Colors.textPrimary, fontSize: FontSize.xl, fontWeight: '800', marginTop: 2 },
   id: { color: Colors.textSecondary, fontSize: FontSize.xs, fontFamily: 'monospace', marginTop: 2 },
   more: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
   body: { color: Colors.textSecondary, fontSize: FontSize.sm, marginTop: 4 },
   buttons: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
-  btn: {
-    flex: 1, paddingVertical: 10, borderRadius: BorderRadius.full, alignItems: 'center',
-    borderWidth: 1, borderColor: Colors.primary,
-  },
-  primary: { backgroundColor: Colors.primary },
-  btnText: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '800' },
-  primaryText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '800' },
+  btn: { flex: 1 },
 });

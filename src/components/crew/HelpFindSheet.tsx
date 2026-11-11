@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Pressable, Platform } from 'react-native';
+import { Modal, View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
+import GradientButton from '../ui/GradientButton';
 import { useFindStore } from '../../store/useFindStore';
 import { useDeviceStore } from '../../store/useDeviceStore';
 import { useCrewStore } from '../../store/useCrewStore';
@@ -80,14 +81,10 @@ export default function HelpFindSheet() {
                   ? `When ${helping.finderName} gets close, your phones measure the exact distance. You can lock your phone: it keeps going on your lock screen.`
                   : `When ${helping.finderName} gets close, your phones measure the exact distance. Keep RNDVU open for that; your spot still goes out if you lock it.`}
             </Text>
-            <TouchableOpacity style={[styles.lightButton, { backgroundColor: myColor }]} onPress={() => setLightUp(true)}>
-              <Text style={styles.lightButtonText}>Light up my screen</Text>
-            </TouchableOpacity>
+            <GradientButton style={styles.lightButton} label="Light up my screen" icon="flashlight.on.fill" onPress={() => setLightUp(true)} />
           </View>
           <Text style={styles.footer}>Sharing for {minsLeft} more min</Text>
-          <TouchableOpacity style={styles.stopButton} onPress={() => stopHelping()}>
-            <Text style={styles.stopButtonText}>Stop sharing</Text>
-          </TouchableOpacity>
+          <GradientButton style={styles.stopButton} variant="ghost" label="Stop sharing" onPress={() => stopHelping()} />
         </SafeAreaView>
       )}
     </Modal>
@@ -97,19 +94,14 @@ export default function HelpFindSheet() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   body: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.lg, gap: Spacing.md },
-  title: { fontSize: FontSize.xl, fontWeight: '800', color: Colors.textPrimary, textAlign: 'center' },
-  distance: { fontSize: 64, fontWeight: '800', color: Colors.textPrimary, fontVariant: ['tabular-nums'] },
+  title: { fontFamily: Fonts.rounded, fontSize: FontSize.xl, fontWeight: '800', color: Colors.textPrimary, textAlign: 'center' },
+  distance: { fontFamily: Fonts.rounded, fontSize: 68, fontWeight: '800', color: Colors.textPrimary, fontVariant: ['tabular-nums'] },
   searching: { fontSize: FontSize.md, color: Colors.success, fontWeight: '700', textAlign: 'center' },
   lead: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', maxWidth: 320 },
-  lightButton: { marginTop: Spacing.lg, borderRadius: BorderRadius.full, paddingVertical: 18, paddingHorizontal: Spacing.xl },
-  lightButtonText: { color: '#ffffff', fontSize: FontSize.lg, fontWeight: '800' },
+  lightButton: { marginTop: Spacing.lg, alignSelf: 'stretch' },
   footer: { textAlign: 'center', color: Colors.textSecondary, fontSize: FontSize.xs },
-  stopButton: {
-    margin: Spacing.md, borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.full,
-    paddingVertical: 14, alignItems: 'center',
-  },
-  stopButtonText: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '700' },
+  stopButton: { margin: Spacing.md },
   flash: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.md },
-  flashText: { fontSize: FontSize.xxl, fontWeight: '900' },
+  flashText: { fontFamily: Fonts.rounded, fontSize: FontSize.xxl, fontWeight: '900' },
   flashHint: { fontSize: FontSize.sm },
 });

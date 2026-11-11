@@ -1,13 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Animated, Easing, Alert } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, Alert, AppState } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts, Gradients, crewColor } from '../../config/theme';
+import GradientButton from '../ui/GradientButton';
 import { useCrewStore } from '../../store/useCrewStore';
 import { haversineDistance, formatDistance } from '../../utils/coordinates';
 import { CLOSE_RANGE_M, arrowAngle, bearingDegrees, compassPoint, nextRotation, usableHeading } from '../../utils/bearing';
 import { pinAge } from '../../utils/pinAge';
-import { hapticSuccess } from '../../utils/haptics';
+import { hapticLight, hapticSuccess } from '../../utils/haptics';
 import { useDeviceStore } from '../../store/useDeviceStore';
 import { capabilities, startPreciseFind, type RangeState } from '../../../modules/rndvu-nearby';
 import { formatPrecise, isFresh, trend, uwbArrowDegrees, type Trend, type UwbReading } from '../../utils/preciseFind';
@@ -26,6 +29,41 @@ const HERE_M = 1.5;
 // Suggest precise finding once GPS puts them roughly within UWB range.
 const SUGGEST_PRECISE_M = 80;
 
+// Proximity tick: a light haptic that comes faster as you close in, so you
+// can walk with the phone down. Every 2.5 s from 150 m out, every 0.4 s
+// under 10 m, linear in between.
+const TICK_FAR_M = 150;
+const TICK_NEAR_M = 10;
+const TICK_SLOW_MS = 2500;
+const TICK_FAST_MS = 400;
+export function tickInterval(meters: number): number {
+  const t = Math.min(1, Math.max(0, (meters - TICK_NEAR_M) / (TICK_FAR_M - TICK_NEAR_M)));
+  return Math.round(TICK_FAST_MS + t * (TICK_SLOW_MS - TICK_FAST_MS));
+}
+
+/** A number that rolls to each new value over ~450 ms instead of jumping. */
+function useRollingNumber(value: number | null): number | null {
+  const [shown, setShown] = useState(value);
+  const from = useRef(value);
+  useEffect(() => {
+    if (value == null || from.current == null) { from.current = value; setShown(value); return; }
+    const start = from.current;
+    const began = Date.now();
+    let frame = 0;
+    const step = () => {
+      const t = Math.min(1, (Date.now() - began) / 450);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const v = start + (value - start) * eased;
+      from.current = v;
+      setShown(v);
+      if (t < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+  return shown;
+}
+
 /**
  * Full-screen arrow to one crew member: which way to walk, how far, and how
  * old their position is. Far away it runs on their last GPS position over
@@ -41,7 +79,7 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
   const myLocation = useCrewStore(s => s.myLocation);
   const [heading, setHeading] = useState<number | null>(null);
   const [, setTick] = useState(0);
-  const rotation = useRef(new Animated.Value(0)).current;
+  const rotation = useSharedValue(0);
   const rotationTotal = useRef(0);
   const wasClose = useRef(false);
   const visible = nodeId != null;
@@ -141,24 +179,50 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
   const showDot = precise ? !showArrow : close;
   const arrived = precise ? preciseHere : close;
 
+  // Spring, not a timed turn: the arrow settles like a compass needle. The
+  // total keeps growing (nextRotation takes the short way), so 359 -> 0 turns
+  // 1 degree, not 359.
   useEffect(() => {
     if (target == null) return;
     rotationTotal.current = nextRotation(rotationTotal.current, target);
-    Animated.timing(rotation, {
-      toValue: rotationTotal.current,
-      duration: 150,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: true,
-    }).start();
-  }, [target, rotation]);
+    rotation.value = withSpring(rotationTotal.current, { damping: 14, stiffness: 140, mass: 0.7 });
+  }, [target]);
+  const arrowStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rotation.value}deg` }] }));
+
+  // The distance the tick follows: UWB when fresh, else GPS. None when the
+  // position is stale (ticking toward where they were would mislead).
+  const tickMeters = precise ? uwb!.distance! : (distance != null && !age.stale ? distance : null);
+  const tickRef = useRef<number | null>(null);
+  tickRef.current = tickMeters;
+  useEffect(() => {
+    if (!visible) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let active = AppState.currentState === 'active';
+    const schedule = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      if (!active) return;
+      const m = tickRef.current;
+      // Nothing to follow yet: look again in a second.
+      timer = setTimeout(() => {
+        if (tickRef.current != null) hapticLight();
+        schedule();
+      }, m == null ? 1000 : tickInterval(m));
+    };
+    const sub = AppState.addEventListener('change', st => { active = st === 'active'; schedule(); });
+    schedule();
+    return () => { sub.remove(); if (timer) clearTimeout(timer); };
+  }, [visible]);
+
+  const rollingGps = useRollingNumber(distance != null && !close ? distance : null);
+  const rollingUwb = useRollingNumber(precise ? uwb!.distance! : null);
 
   useEffect(() => {
     if (arrived && !wasClose.current) hapticSuccess();
     wasClose.current = arrived;
   }, [arrived]);
 
-  const spin = rotation.interpolate({ inputRange: [0, 360], outputRange: ['0deg', '360deg'] });
-  const color = member?.color ?? Colors.primary;
+  const color = member ? crewColor(member.nodeId, member.color) : Colors.primary;
 
   let status: string;
   if (!member) status = '';
@@ -191,6 +255,7 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <View style={styles.header}>
+          {member && <View style={[styles.headerDot, { backgroundColor: color }]} />}
           <Text style={styles.title} numberOfLines={1}>Find {member?.longName ?? ''}</Text>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Text style={styles.close}>Done</Text>
@@ -200,18 +265,19 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
         <View style={styles.body}>
           <View style={styles.dial}>
             {showArrow && (
-              <Animated.View style={[styles.arrowWrap, { opacity: !precise && age.stale ? 0.35 : 1, transform: [{ rotate: spin }] }]}>
-                <View style={[styles.arrowHead, { borderBottomColor: color }]} />
-                <View style={[styles.arrowShaft, { backgroundColor: color }]} />
+              <Animated.View style={[styles.arrowWrap, { opacity: !precise && age.stale ? 0.35 : 1 }, arrowStyle]}>
+                <SunsetArrow />
               </Animated.View>
             )}
-            {showDot && <View style={[styles.closeDot, { backgroundColor: color }]} />}
+            {showDot && (
+              <LinearGradient colors={Gradients.sunset} start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }} style={styles.closeDot} />
+            )}
           </View>
 
           {precise ? (
-            <Text style={styles.distance}>{formatPrecise(uwb!.distance!)}</Text>
+            <Text style={styles.distance}>{formatPrecise(rollingUwb ?? uwb!.distance!)}</Text>
           ) : distance != null && (
-            <Text style={styles.distance}>{close ? 'Close' : formatDistance(distance)}</Text>
+            <Text style={styles.distance}>{close ? 'Close' : formatDistance(rollingGps ?? distance)}</Text>
           )}
           {precise ? (
             <Text style={styles.precise}>Precise · Ultra Wideband</Text>
@@ -239,59 +305,76 @@ export default function FindSheet({ nodeId, onClose, onShowOnMap }: Props) {
               </TouchableOpacity>
             </View>
           ) : (
-            <TouchableOpacity style={[styles.askButton, { backgroundColor: color }]} onPress={handleAsk}>
-              <Text style={styles.askButtonText}>Ask {member.longName} to help</Text>
-            </TouchableOpacity>
+            <GradientButton style={styles.askButton} label={`Ask ${member.longName} to help`} icon="hand.wave" onPress={handleAsk} />
           )
         )}
 
         {member?.lat != null && (
-          <TouchableOpacity style={styles.mapButton} onPress={() => nodeId != null && onShowOnMap(nodeId)}>
-            <Text style={styles.mapButtonText}>Show on map</Text>
-          </TouchableOpacity>
+          <GradientButton style={styles.mapButton} variant="ghost" label="Show on map" icon="map" onPress={() => { if (nodeId != null) onShowOnMap(nodeId); }} />
         )}
       </SafeAreaView>
     </Modal>
   );
 }
 
+// The arrow, filled tail to tip with the sunset (orange into pink). The head
+// is the top half of a diamond (a rotated square, stretched), clipped: a
+// gradient can fill that, which a border triangle can't.
+const HEAD_W = 88;
+const HEAD_H = 80;
+const SQUARE = HEAD_W / Math.SQRT2;
+function SunsetArrow() {
+  return (
+    <View style={{ alignItems: 'center' }}>
+      <View style={{ width: HEAD_W, height: HEAD_H, overflow: 'hidden' }}>
+        <View style={{ position: 'absolute', left: 0, top: HEAD_H - HEAD_W / 2, width: HEAD_W, height: HEAD_W, transform: [{ scaleY: HEAD_H / (HEAD_W / 2) }] }}>
+          <LinearGradient
+            colors={[Gradients.sunset[1], Gradients.sunset[2]]}
+            start={{ x: 1, y: 1 }}
+            end={{ x: 0, y: 0 }}
+            style={{ position: 'absolute', left: (HEAD_W - SQUARE) / 2, top: (HEAD_W - SQUARE) / 2, width: SQUARE, height: SQUARE, transform: [{ rotate: '45deg' }] }}
+          />
+        </View>
+      </View>
+      <LinearGradient
+        colors={[Gradients.sunset[0], Gradients.sunset[1]]}
+        start={{ x: 0.5, y: 1 }}
+        end={{ x: 0.5, y: 0 }}
+        style={{ width: 26, height: 84, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 }}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border,
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.border,
   },
-  title: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.textPrimary, flex: 1, marginRight: Spacing.sm },
-  close: { fontSize: FontSize.md, fontWeight: '700', color: Colors.primary },
+  headerDot: { width: 10, height: 10, borderRadius: 5 },
+  title: { fontFamily: Fonts.rounded, fontSize: FontSize.lg, fontWeight: '800', color: Colors.textPrimary, flex: 1, marginRight: Spacing.sm },
+  close: { fontFamily: Fonts.rounded, fontSize: FontSize.md, fontWeight: '700', color: Colors.primary },
   body: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.lg, gap: Spacing.sm },
   dial: {
     width: ARROW_SIZE + Spacing.xl, height: ARROW_SIZE + Spacing.xl, borderRadius: BorderRadius.full,
-    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.glassBorder, backgroundColor: 'rgba(255, 255, 255, 0.04)',
     alignItems: 'center', justifyContent: 'center', marginBottom: Spacing.lg,
+    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.18, shadowRadius: 40,
   },
   arrowWrap: { width: ARROW_SIZE, height: ARROW_SIZE, alignItems: 'center', justifyContent: 'center' },
-  arrowHead: {
-    width: 0, height: 0,
-    borderLeftWidth: 44, borderRightWidth: 44, borderBottomWidth: 80,
-    borderLeftColor: 'transparent', borderRightColor: 'transparent',
-  },
-  arrowShaft: { width: 26, height: 84, borderBottomLeftRadius: 6, borderBottomRightRadius: 6 },
   closeDot: { width: 56, height: 56, borderRadius: BorderRadius.full },
-  distance: { fontSize: 64, fontWeight: '800', color: Colors.textPrimary, fontVariant: ['tabular-nums'] },
+  distance: { fontFamily: Fonts.rounded, fontSize: 68, fontWeight: '800', color: Colors.textPrimary, fontVariant: ['tabular-nums'], letterSpacing: -1 },
   age: { fontSize: FontSize.md, color: Colors.textSecondary },
   ageStale: { color: Colors.warning },
-  precise: { fontSize: FontSize.md, color: Colors.success, fontWeight: '700' },
+  precise: { fontFamily: Fonts.rounded, fontSize: FontSize.md, color: Colors.success, fontWeight: '700' },
   hint: { fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: 'center', maxWidth: 300 },
-  status: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', marginTop: Spacing.sm, maxWidth: 320 },
-  askButton: { marginHorizontal: Spacing.md, borderRadius: BorderRadius.full, paddingVertical: 16, alignItems: 'center' },
-  askButtonText: { color: '#ffffff', fontSize: FontSize.md, fontWeight: '800' },
+  status: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', marginTop: Spacing.sm, maxWidth: 320, lineHeight: 19 },
+  askButton: { marginHorizontal: Spacing.md },
   askRow: { flexDirection: 'row', alignItems: 'center', marginHorizontal: Spacing.md, gap: Spacing.md },
   askStatus: { flex: 1, color: Colors.textSecondary, fontSize: FontSize.sm },
   askHelping: { color: Colors.success, fontWeight: '700' },
-  askStop: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
-  mapButton: {
-    margin: Spacing.md, borderWidth: 1, borderColor: Colors.primary, borderRadius: BorderRadius.full,
-    paddingVertical: 14, alignItems: 'center',
-  },
-  mapButtonText: { color: Colors.primary, fontSize: FontSize.md, fontWeight: '700' },
+  askStop: { fontFamily: Fonts.rounded, color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
+  mapButton: { margin: Spacing.md },
 });

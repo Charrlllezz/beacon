@@ -6,7 +6,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
+import GradientButton from '../ui/GradientButton';
+import { glassCard } from '../ui/Glass';
 import { festivalConfig } from '../../services/festival/FestivalConfig';
 import { useMessagesStore } from '../../store/useMessagesStore';
 import { useCrewStore } from '../../store/useCrewStore';
@@ -167,20 +169,14 @@ export default function EndTripSheet() {
                 <Text style={styles.stat}>Radio battery now: {stats.radioBattery === null ? 'unknown' : stats.radioBattery > 100 ? 'USB' : `${stats.radioBattery}%`}</Text>
               </View>
 
-              <TouchableOpacity style={styles.primary} onPress={finish}>
-                <Text style={styles.primaryText}>Save and share</Text>
-              </TouchableOpacity>
+              <GradientButton label="Save and share" icon="square.and.arrow.up" onPress={finish} style={styles.primary} />
               <Text style={styles.hint}>Opens the share sheet. Send it to whoever set up your crew.</Text>
             </ScrollView>
           ) : (
             <ScrollView contentContainerStyle={styles.content}>
               <Text style={styles.doneTitle}>Thanks. Saved on this phone.</Text>
-              <TouchableOpacity style={styles.secondary} onPress={() => Share.share({ message: text }).catch(() => {})}>
-                <Text style={styles.secondaryText}>Share again</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.secondary} onPress={releaseRadio}>
-                <Text style={styles.secondaryText}>Release my radio</Text>
-              </TouchableOpacity>
+              <GradientButton variant="ghost" label="Share again" icon="square.and.arrow.up" onPress={() => Share.share({ message: text }).catch(() => {})} style={styles.secondary} />
+              <GradientButton variant="ghost" label="Release my radio" onPress={releaseRadio} style={styles.secondary} />
               <Text style={styles.hint}>Borrowed radio? Release it, then hand it back.</Text>
             </ScrollView>
           )}
@@ -195,34 +191,29 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.md,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.border,
   },
-  headerTitle: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.textPrimary },
-  close: { fontSize: FontSize.md, fontWeight: '700', color: Colors.primary },
+  headerTitle: { fontFamily: Fonts.rounded, fontSize: FontSize.xl, fontWeight: '800', color: Colors.textPrimary },
+  close: { fontFamily: Fonts.rounded, fontSize: FontSize.md, fontWeight: '700', color: Colors.primary },
   content: { padding: Spacing.md, paddingBottom: Spacing.xl },
   lead: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.sm },
-  q: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textPrimary, marginTop: Spacing.lg, marginBottom: Spacing.sm },
+  q: { fontFamily: Fonts.rounded, fontSize: FontSize.md, fontWeight: '700', color: Colors.textPrimary, marginTop: Spacing.lg, marginBottom: Spacing.sm },
   choices: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   choice: {
     paddingVertical: 10, paddingHorizontal: 14, borderRadius: BorderRadius.full,
-    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.surface,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.glassBorder, backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
-  choiceOn: { borderColor: Colors.primary, backgroundColor: Colors.primary + '22' },
+  choiceOn: { borderColor: Colors.primary, backgroundColor: 'rgba(255, 126, 74, 0.16)' },
   choiceText: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.textSecondary },
   choiceTextOn: { color: Colors.primary },
   input: {
-    minHeight: 80, backgroundColor: Colors.surface, borderRadius: BorderRadius.md, padding: Spacing.md,
-    color: Colors.textPrimary, fontSize: FontSize.sm, borderWidth: 1, borderColor: Colors.border, textAlignVertical: 'top',
+    minHeight: 80, backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: BorderRadius.md, padding: Spacing.md,
+    color: Colors.textPrimary, fontSize: FontSize.sm, borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.glassBorder, textAlignVertical: 'top',
   },
-  stats: { backgroundColor: Colors.surface, borderRadius: BorderRadius.md, padding: Spacing.md, gap: 4, borderWidth: 1, borderColor: Colors.border },
+  stats: { ...glassCard, borderRadius: BorderRadius.md, padding: Spacing.md, gap: 4 },
   stat: { fontSize: FontSize.sm, color: Colors.textSecondary },
-  primary: { backgroundColor: Colors.primary, borderRadius: BorderRadius.full, paddingVertical: 14, alignItems: 'center', marginTop: Spacing.lg },
-  primaryText: { color: '#fff', fontSize: FontSize.md, fontWeight: '800' },
-  secondary: {
-    borderRadius: BorderRadius.full, paddingVertical: 14, alignItems: 'center', marginTop: Spacing.md,
-    borderWidth: 1, borderColor: Colors.primary,
-  },
-  secondaryText: { color: Colors.primary, fontSize: FontSize.md, fontWeight: '800' },
+  primary: { marginTop: Spacing.lg },
+  secondary: { marginTop: Spacing.md },
   hint: { fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: 'center', marginTop: Spacing.sm },
-  doneTitle: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.success, marginTop: Spacing.lg },
+  doneTitle: { fontFamily: Fonts.rounded, fontSize: FontSize.xl, fontWeight: '800', color: Colors.success, marginTop: Spacing.lg },
 });

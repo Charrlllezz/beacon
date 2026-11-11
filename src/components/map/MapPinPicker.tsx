@@ -1,7 +1,8 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
 import MapView, { PROVIDER_DEFAULT, Region, UrlTile } from 'react-native-maps';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
+import Icon from '../ui/Icon';
 import { useCrewStore } from '../../store/useCrewStore';
 import { festivalConfig } from '../../services/festival/FestivalConfig';
 import { getTilePath } from '../../services/map/TilePrefetch';
@@ -90,7 +91,7 @@ export default function MapPinPicker({ visible, initialCoord, onConfirm, onCance
 
           {/* Fixed center pin overlay */}
           <View style={styles.centerPinWrapper} pointerEvents="none">
-            <Text style={styles.centerPinIcon}>📍</Text>
+            <View style={styles.centerPinIcon}><Icon name="mappin.circle.fill" size={40} color={Colors.primary} /></View>
             <View style={styles.centerPinShadow} />
           </View>
         </View>
@@ -127,7 +128,8 @@ const styles = StyleSheet.create({
   },
   title: {
     color: Colors.textPrimary,
-    fontSize: FontSize.md,
+    fontFamily: Fonts.rounded,
+    fontSize: FontSize.md + 1,
     fontWeight: '700',
   },
   confirmText: {
@@ -158,8 +160,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   centerPinIcon: {
-    fontSize: 40,
     marginTop: -40,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 5,
   },
   centerPinShadow: {
     width: 6,
@@ -179,6 +184,6 @@ const styles = StyleSheet.create({
   coordText: {
     color: Colors.textSecondary,
     fontSize: FontSize.sm,
-    fontFamily: 'monospace',
+    fontFamily: 'ui-monospace',
   },
 });

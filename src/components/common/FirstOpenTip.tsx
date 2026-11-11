@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Modal } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import type { SFSymbol } from 'expo-symbols';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
+import Glass from '../ui/Glass';
+import GradientButton from '../ui/GradientButton';
+import Icon from '../ui/Icon';
 
 interface Tip {
-  icon: string;
+  icon: SFSymbol;
   title: string;
   description: string;
 }
@@ -37,13 +41,16 @@ export default function FirstOpenTip({ storageKey, title, tips, deferred = false
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={handleDismiss}>
       <View style={styles.backdrop}>
-        <View style={styles.card} accessibilityViewIsModal>
+        <Glass style={styles.card} radius={BorderRadius.xl} intensity={60}>
+        <View accessibilityViewIsModal>
           <Text style={styles.title} accessibilityRole="header">{title}</Text>
 
           <View style={styles.tipsList}>
             {tips.map((tip, index) => (
               <View key={index} style={styles.tipRow}>
-                <Text style={styles.tipIcon}>{tip.icon}</Text>
+                <View style={styles.tipIcon}>
+                  <Icon name={tip.icon} size={20} color={Colors.primary} />
+                </View>
                 <View style={styles.tipContent}>
                   <Text style={styles.tipTitle}>{tip.title}</Text>
                   <Text style={styles.tipDescription}>{tip.description}</Text>
@@ -52,10 +59,9 @@ export default function FirstOpenTip({ storageKey, title, tips, deferred = false
             ))}
           </View>
 
-          <TouchableOpacity style={styles.dismissButton} onPress={handleDismiss} accessibilityRole="button">
-            <Text style={styles.dismissButtonText}>Got it</Text>
-          </TouchableOpacity>
+          <GradientButton label="Got it" onPress={handleDismiss} />
         </View>
+        </Glass>
       </View>
     </Modal>
   );
@@ -71,13 +77,10 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
   title: {
+    fontFamily: Fonts.rounded,
     color: Colors.textPrimary,
     fontSize: FontSize.xl,
     fontWeight: '800',
@@ -90,21 +93,27 @@ const styles = StyleSheet.create({
   },
   tipRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.045)',
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
-    gap: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    gap: Spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
   },
   tipIcon: {
-    fontSize: 24,
-    marginTop: 2,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 126, 74, 0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tipContent: {
     flex: 1,
   },
   tipTitle: {
+    fontFamily: Fonts.rounded,
     color: Colors.textPrimary,
     fontSize: FontSize.sm,
     fontWeight: '700',
@@ -114,16 +123,5 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     fontSize: FontSize.xs,
     lineHeight: 16,
-  },
-  dismissButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  dismissButtonText: {
-    color: '#fff',
-    fontSize: FontSize.md,
-    fontWeight: '700',
   },
 });

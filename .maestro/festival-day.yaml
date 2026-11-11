@@ -32,12 +32,12 @@ appId: com.charlesapps.rndvu
 # Rows are single accessible elements ("📟, Meshtastic_MOCK, ● Signal: …"),
 # so match inside the label.
 - extendedWaitUntil:
-    visible: ".*Meshtastic_MOCK.*"
+    visible: ".*(Meshtastic_MOCK|RNDVU-7F3A).*"
     timeout: 30000
     optional: true
 - takeScreenshot: shots/04-device-list
 - tapOn:
-    text: ".*Meshtastic_MOCK.*"
+    text: ".*(Meshtastic_MOCK|RNDVU-7F3A).*"
     optional: true
 # With a crew key already on the radio, setup skips "Your crew".
 - extendedWaitUntil:
@@ -137,7 +137,7 @@ appId: com.charlesapps.rndvu
 - inputText: "omw to sahara, save me a spot"
 - takeScreenshot: shots/32-chat-typing
 - tapOn:
-    text: ".*↑.*"
+    id: "chat-send"
     optional: true
 - pressKey: Enter
 - waitForAnimationToEnd
@@ -146,7 +146,7 @@ appId: com.charlesapps.rndvu
     text: "Hide keyboard"
     optional: true
 - tapOn:
-    text: "＋"
+    id: "chat-quick-actions"
     optional: true
 - waitForAnimationToEnd
 - takeScreenshot: shots/34-quick-actions
@@ -161,7 +161,7 @@ appId: com.charlesapps.rndvu
 - waitForAnimationToEnd
 - takeScreenshot: shots/36-meetup-cancelled
 - tapOn:
-    text: "✕"
+    id: "chat-quick-actions-close"
     optional: true
 
 # ── 5. Map: look around, tag water ──────────────────────────────────────
@@ -206,12 +206,12 @@ appId: com.charlesapps.rndvu
     text: "Cancel"
     optional: true
 - tapOn:
-    text: "☰"
+    text: "Filters"
     optional: true
 - waitForAnimationToEnd
 - takeScreenshot: shots/45-map-filters
 - tapOn:
-    text: "☰"
+    text: "Filters"
     optional: true
 # The tag as the crew sees it in chat.
 - tapOn:

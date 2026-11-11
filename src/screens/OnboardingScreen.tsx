@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList,
-  Animated, ActivityIndicator, TextInput, Alert,
+  Animated, ActivityIndicator, TextInput, Alert, useWindowDimensions,
   KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts, Gradients } from '../config/theme';
+import ConstellationLogo from '../components/ui/ConstellationLogo';
+import GradientButton from '../components/ui/GradientButton';
+import Icon, { Effects } from '../components/ui/Icon';
+import { glassCard } from '../components/ui/Glass';
 import { useDeviceStore, waitForMyNode } from '../store/useDeviceStore';
 import { useCrewStore } from '../store/useCrewStore';
 import { bleService } from '../services/ble/BleManager';
@@ -31,7 +36,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
   const [shortName, setShortName] = useState('');
   const shortNameRef = useRef<TextInput>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const { width: screenW } = useWindowDimensions();
 
   const discoveredDevices = useDeviceStore(s => s.discoveredDevices);
   const addDiscoveredDevice = useDeviceStore(s => s.addDiscoveredDevice);
@@ -52,16 +57,9 @@ export default function OnboardingScreen({ onComplete }: Props) {
   }, []);
 
   useEffect(() => {
-    const fade = Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true });
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.08, duration: 1200, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 1200, useNativeDriver: true }),
-      ])
-    );
+    const fade = Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true });
     fade.start();
-    pulse.start();
-    return () => { fade.stop(); pulse.stop(); };
+    return () => fade.stop();
   }, []);
 
   async function handleScan() {
@@ -206,22 +204,18 @@ export default function OnboardingScreen({ onComplete }: Props) {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Soft sunset wash from the top, behind every step. */}
+      <LinearGradient colors={Gradients.dusk} style={styles.wash} pointerEvents="none" />
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
 
         {step === 'welcome' && (
           <View style={styles.centered}>
-            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-              <View style={styles.logoCircle}>
-                <Text style={styles.logoEmoji}>📡</Text>
-              </View>
-            </Animated.View>
-            <Text style={styles.appName}>RNDVU</Text>
+            <ConstellationLogo size={Math.min(300, screenW - 80)} />
+            <Text style={styles.wordmark}>RNDVU</Text>
             <Text style={styles.tagline}>
               Never miss the rendezvous.
             </Text>
-            <TouchableOpacity style={styles.primaryButton} onPress={() => setStep('name')}>
-              <Text style={styles.primaryButtonText}>Get Started</Text>
-            </TouchableOpacity>
+            <GradientButton label="Get Started" onPress={() => setStep('name')} style={styles.cta} />
           </View>
         )}
 
@@ -235,7 +229,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
             >
-              <Text style={styles.appName}>What's your name?</Text>
+              <Text style={styles.heading}>What's your name?</Text>
               <Text style={styles.tagline}>This is how your crew will see you</Text>
               <TextInput
                 style={styles.nameInput}
@@ -254,6 +248,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
                 submitBehavior="submit"
                 onSubmitEditing={() => shortNameRef.current?.focus()}
                 keyboardAppearance="dark"
+                selectionColor={Colors.primary}
               />
               <TextInput
                 style={[styles.nameInput, { marginTop: Spacing.sm }]}
@@ -265,10 +260,14 @@ export default function OnboardingScreen({ onComplete }: Props) {
                 ref={shortNameRef}
                 returnKeyType="done"
                 keyboardAppearance="dark"
+                selectionColor={Colors.primary}
               />
               <Text style={styles.hintText}>Short name: 4 chars max, shown on map pins</Text>
-              <TouchableOpacity
-                style={[styles.primaryButton, !displayName.trim() && styles.primaryButtonDisabled]}
+              <GradientButton
+                label="Connect Your Device"
+                icon="dot.radiowaves.left.and.right"
+                disabled={!displayName.trim()}
+                style={[styles.cta, { marginTop: Spacing.lg }]}
                 onPress={() => {
                   if (displayName.trim()) {
                     useCrewStore.getState().setDisplayName(displayName.trim(), shortName.trim() || displayName.trim().slice(0, 4));
@@ -277,17 +276,17 @@ export default function OnboardingScreen({ onComplete }: Props) {
                     handleScan();
                   }
                 }}
-                disabled={!displayName.trim()}
-              >
-                <Text style={styles.primaryButtonText}>Connect Your Device</Text>
-              </TouchableOpacity>
+              />
             </ScrollView>
           </KeyboardAvoidingView>
         )}
 
         {step === 'scanning' && (
           <View style={styles.centered}>
-            <ActivityIndicator size="large" color={Colors.primary} />
+            <View style={styles.statusIcon}>
+              <Icon name="dot.radiowaves.left.and.right" size={34} color={Colors.primary} animation={Effects.signal} />
+            </View>
+            <ActivityIndicator color={Colors.textSecondary} />
             <Text style={styles.statusText}>Looking for RNDVU devices…</Text>
             <Text style={styles.hintText}>Make sure your device is powered on</Text>
           </View>
@@ -306,30 +305,35 @@ export default function OnboardingScreen({ onComplete }: Props) {
                 <TouchableOpacity
                   style={styles.deviceCard}
                   onPress={() => handleConnect(item.id, item.name)}
+                  activeOpacity={0.7}
                 >
-                  <Text style={styles.deviceIcon}>📟</Text>
+                  <View style={styles.deviceIcon}>
+                    <Icon name="antenna.radiowaves.left.and.right" size={22} color={Colors.primary} />
+                  </View>
                   <View style={styles.deviceInfo}>
                     <Text style={styles.deviceName}>{item.name}</Text>
-                    <Text style={styles.deviceSignal}>● Signal: Strong</Text>
+                    <View style={styles.signalRow}>
+                      <View style={styles.signalDot} />
+                      <Text style={styles.deviceSignal}>Signal: Strong</Text>
+                    </View>
                   </View>
-                  <Text style={styles.connectArrow}>→</Text>
+                  <Icon name="chevron.right" size={16} color={Colors.textSecondary} weight="semibold" />
                 </TouchableOpacity>
               )}
             />
             <View style={styles.selectActions}>
-              <TouchableOpacity style={styles.secondaryButton} onPress={handleScan}>
-                <Text style={styles.secondaryButtonText}>Scan Again</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.secondaryButton} onPress={() => setStep('name')}>
-                <Text style={styles.secondaryButtonText}>Back</Text>
-              </TouchableOpacity>
+              <GradientButton variant="ghost" compact label="Scan Again" icon="arrow.clockwise" onPress={handleScan} style={styles.flex} />
+              <GradientButton variant="ghost" compact label="Back" onPress={() => setStep('name')} style={styles.flex} />
             </View>
           </View>
         )}
 
         {step === 'connecting' && (
           <View style={styles.centered}>
-            <ActivityIndicator size="large" color={Colors.primary} />
+            <View style={styles.statusIcon}>
+              <Icon name="antenna.radiowaves.left.and.right" size={32} color={Colors.primary} animation={Effects.signal} />
+            </View>
+            <ActivityIndicator color={Colors.textSecondary} />
             <Text style={styles.statusText}>Connecting to your device…</Text>
             <Text style={styles.hintText}>Just a moment</Text>
           </View>
@@ -338,13 +342,14 @@ export default function OnboardingScreen({ onComplete }: Props) {
         {step === 'crew' && (
           <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <ScrollView contentContainerStyle={styles.centered} keyboardShouldPersistTaps="handled">
-              <Text style={styles.appName}>Your crew</Text>
+              <View style={styles.statusIcon}>
+                <Icon name="person.3" size={32} color={Colors.primary} />
+              </View>
+              <Text style={styles.heading}>Your crew</Text>
               <Text style={styles.tagline}>
                 Your crew shares a private key. Only people in it can read your messages or see you on the map.
               </Text>
-              <TouchableOpacity style={styles.primaryButton} onPress={() => setScanning(true)}>
-                <Text style={styles.primaryButtonText}>Join with a QR</Text>
-              </TouchableOpacity>
+              <GradientButton label="Join with a QR" icon="qrcode.viewfinder" onPress={() => setScanning(true)} style={styles.cta} />
               <Text style={[styles.hintText, { marginBottom: Spacing.lg }]}>Someone in your crew shows it from Crew → Invite</Text>
               <TextInput
                 style={styles.nameInput}
@@ -354,10 +359,9 @@ export default function OnboardingScreen({ onComplete }: Props) {
                 onChangeText={setCrewName}
                 maxLength={30}
                 keyboardAppearance="dark"
+                selectionColor={Colors.primary}
               />
-              <TouchableOpacity style={styles.secondaryButton} onPress={handleStartCrew}>
-                <Text style={styles.secondaryButtonText}>Start a new crew</Text>
-              </TouchableOpacity>
+              <GradientButton variant="ghost" label="Start a new crew" icon="plus" onPress={handleStartCrew} style={[styles.cta, { marginTop: Spacing.sm }]} />
               <TouchableOpacity onPress={finishOnboarding} style={{ marginTop: Spacing.lg }}>
                 <Text style={styles.hintText}>Skip for now (set it up on the Crew tab)</Text>
               </TouchableOpacity>
@@ -368,19 +372,17 @@ export default function OnboardingScreen({ onComplete }: Props) {
 
         {step === 'done' && (
           <View style={styles.centered}>
-            <View style={[styles.logoCircle, { backgroundColor: Colors.success + '22', borderColor: Colors.success + '55' }]}>
-              <Text style={styles.logoEmoji}>✓</Text>
+            <View style={styles.doneBadge}>
+              <Icon name="checkmark" size={44} color={Colors.success} weight="bold" animation={Effects.bounce} />
             </View>
-            <Text style={styles.appName}>You're In!</Text>
+            <Text style={styles.heading}>You're In!</Text>
             <Text style={styles.tagline}>
               {crewKey ? `In ${crewKey.displayName}\n` : ''}
               {crewCount > 0
                 ? `${crewCount} crew member${crewCount !== 1 ? 's' : ''} online`
                 : 'Connected to the mesh'}
             </Text>
-            <TouchableOpacity style={styles.primaryButton} onPress={onComplete}>
-              <Text style={styles.primaryButtonText}>Go to RNDVU →</Text>
-            </TouchableOpacity>
+            <GradientButton label="Go to RNDVU" icon="arrow.right" onPress={onComplete} style={styles.cta} />
           </View>
         )}
 
@@ -391,6 +393,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  wash: { position: 'absolute', top: 0, left: 0, right: 0, height: '60%' },
   flex: { flex: 1 },
   content: { flex: 1 },
   centered: {
@@ -399,23 +402,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: Spacing.xl,
   },
-  logoCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: Colors.primary + '22',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.lg,
-    borderWidth: 2,
-    borderColor: Colors.primary + '55',
-  },
-  logoEmoji: { fontSize: 52 },
-  appName: {
-    fontSize: 44,
+  wordmark: {
+    fontFamily: Fonts.rounded,
+    fontSize: 46,
     fontWeight: '900',
     color: Colors.textPrimary,
-    letterSpacing: -1,
+    letterSpacing: 8,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.xs,
+    textAlign: 'center',
+  },
+  heading: {
+    fontFamily: Fonts.rounded,
+    fontSize: 38,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    letterSpacing: -0.5,
     marginBottom: Spacing.sm,
     textAlign: 'center',
   },
@@ -423,30 +425,42 @@ const styles = StyleSheet.create({
     fontSize: FontSize.lg,
     color: Colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 28,
+    lineHeight: 26,
     marginBottom: Spacing.xxl,
   },
-  primaryButton: {
-    backgroundColor: Colors.primary,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.xl,
-    borderRadius: BorderRadius.full,
-    minWidth: 260,
+  cta: { alignSelf: 'stretch' },
+  statusIcon: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(255, 126, 74, 0.12)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 126, 74, 0.4)',
     alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.lg,
   },
-  primaryButtonDisabled: {
-    backgroundColor: Colors.textMuted,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: FontSize.md,
-    fontWeight: '700',
+  doneBadge: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    backgroundColor: 'rgba(74, 222, 128, 0.12)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(74, 222, 128, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.lg,
+    shadowColor: Colors.success,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
   },
   statusText: {
+    fontFamily: Fonts.rounded,
     color: Colors.textPrimary,
     fontSize: FontSize.lg,
     marginTop: Spacing.lg,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   hintText: {
     color: Colors.textSecondary,
@@ -460,8 +474,9 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.xxl,
   },
   selectTitle: {
-    fontSize: FontSize.xl,
-    fontWeight: '700',
+    fontFamily: Fonts.rounded,
+    fontSize: FontSize.xxl,
+    fontWeight: '800',
     color: Colors.textPrimary,
     marginBottom: Spacing.xs,
   },
@@ -471,60 +486,49 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   deviceCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
+    ...glassCard,
     padding: Spacing.md,
     marginBottom: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
-  deviceIcon: { fontSize: 28, marginRight: Spacing.md },
+  deviceIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 126, 74, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: Spacing.md,
+  },
   deviceInfo: { flex: 1 },
   deviceName: {
+    fontFamily: Fonts.rounded,
     color: Colors.textPrimary,
     fontSize: FontSize.md,
-    fontWeight: '600',
+    fontWeight: '700',
   },
+  signalRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  signalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.success },
   deviceSignal: {
     color: Colors.success,
     fontSize: FontSize.xs,
-    marginTop: 3,
-  },
-  connectArrow: {
-    color: Colors.primary,
-    fontSize: FontSize.xl,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   nameInput: {
     width: '100%',
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     color: Colors.textPrimary,
     fontSize: FontSize.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
     marginBottom: Spacing.xs,
   },
   selectActions: {
     flexDirection: 'row',
     gap: Spacing.sm,
     marginTop: Spacing.md,
-  },
-  secondaryButton: {
-    flex: 1,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-  },
-  secondaryButtonText: {
-    color: Colors.textSecondary,
-    fontSize: FontSize.sm,
-    fontWeight: '600',
   },
 });

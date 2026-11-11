@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, TouchableOpacity, Linking, Platform } from 'react-native';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
 import type { SOSMessage } from '../../types/messages';
 import { timeAgo } from '../../utils/time';
 import { haversineDistance, formatDistance } from '../../utils/coordinates';
@@ -10,6 +10,7 @@ import { festivalConfig } from '../../services/festival/FestivalConfig';
 import { NOT_EMERGENCY_SERVICES } from '../../config/safetyCopy';
 import { sosThread, isSosHead, sosAnchor } from '../../utils/sos';
 import ReplyBar from './ReplyBar';
+import Icon from '../ui/Icon';
 
 interface Props {
   message: SOSMessage;
@@ -59,7 +60,10 @@ export default function SOSCard({ message, isMine }: Props) {
   if (thread.ended) {
     return (
       <View style={[styles.card, styles.cardEnded]}>
-        <Text style={styles.endedTitle}>✓ {isMine ? 'You' : message.fromName} said {isMine ? "you're" : "they're"} OK</Text>
+        <View style={styles.endedRow}>
+          <Icon name="checkmark.circle.fill" size={16} color={Colors.success} />
+          <Text style={styles.endedTitle}>{isMine ? 'You' : message.fromName} said {isMine ? "you're" : "they're"} OK</Text>
+        </View>
         <Text style={styles.endedSub}>
           SOS {timeAgo(message.timestamp / 1000)}, cancelled {timeAgo((thread.endedAt ?? 0) / 1000)}
         </Text>
@@ -70,7 +74,9 @@ export default function SOSCard({ message, isMine }: Props) {
   return (
     <Animated.View style={[styles.card, { transform: [{ scale: pulseAnim }] }]}>
       <View style={styles.header}>
-        <Text style={styles.emoji}>🆘</Text>
+        <View style={styles.sosTile}>
+          <Icon name="sos" size={26} color="#fff" weight="bold" />
+        </View>
         <View style={styles.headerText}>
           <Text style={styles.title}>{isMine ? 'YOUR SOS IS ON' : 'NEEDS HELP'}</Text>
           <Text style={styles.sender}>{isMine ? 'Your crew gets your location every 2 min' : message.fromName}</Text>
@@ -105,24 +111,29 @@ export default function SOSCard({ message, isMine }: Props) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: Colors.error + '18',
+    backgroundColor: Colors.error + '1f',
     borderRadius: BorderRadius.lg,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: Colors.error,
     padding: Spacing.md,
     marginVertical: 6,
   },
   cardEnded: {
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.success + '55',
+    backgroundColor: 'rgba(255, 255, 255, 0.045)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.success + '66',
   },
-  endedTitle: { fontSize: FontSize.sm, fontWeight: '800', color: Colors.success },
+  endedRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  endedTitle: { fontFamily: Fonts.rounded, fontSize: FontSize.sm, fontWeight: '800', color: Colors.success },
   endedSub: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
-  emoji: { fontSize: 36 },
+  sosTile: {
+    width: 46, height: 46, borderRadius: 14, backgroundColor: Colors.error,
+    alignItems: 'center', justifyContent: 'center',
+  },
   headerText: { flex: 1 },
   title: {
+    fontFamily: Fonts.rounded,
     fontSize: FontSize.lg,
     fontWeight: '900',
     color: Colors.error,
@@ -137,7 +148,7 @@ const styles = StyleSheet.create({
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: 'rgba(0, 0, 0, 0.22)',
     borderRadius: BorderRadius.sm,
     padding: Spacing.sm,
     marginBottom: 8,
@@ -151,7 +162,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
   },
-  navigateText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '800' },
+  navigateText: { fontFamily: Fonts.rounded, color: '#fff', fontSize: FontSize.xs, fontWeight: '800' },
   footer: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing.sm, marginTop: Spacing.sm },
   notice: { flex: 1, fontSize: FontSize.xs, color: Colors.textSecondary },
   time: { fontSize: FontSize.xs, color: Colors.error + 'aa', alignSelf: 'flex-end' },

@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
+import Icon, { Effects } from '../ui/Icon';
 import { useMessagesStore } from '../../store/useMessagesStore';
 import { useDeviceStore } from '../../store/useDeviceStore';
 import { useCrewStore } from '../../store/useCrewStore';
@@ -49,8 +50,9 @@ export default function SosBanner() {
         : `Sent ${active.sends}× · last ${active.lastSentAt ? timeAgo(active.lastSentAt / 1000) : '—'}`;
     return (
       <View style={[styles.banner, styles.mine]}>
+        <View style={styles.badge}><Icon name="sos" size={18} color="#fff" weight="bold" animation={active.ending ? undefined : Effects.pulse} /></View>
         <View style={styles.text}>
-          <Text style={styles.title}>🆘 Your SOS is on</Text>
+          <Text style={styles.title}>Your SOS is on</Text>
           <Text style={styles.sub}>{status}</Text>
           {coming.length > 0 && <Text style={styles.coming}>{coming.join(', ')} coming</Text>}
         </View>
@@ -85,8 +87,9 @@ export default function SosBanner() {
       activeOpacity={0.8}
       accessibilityRole="button"
     >
+      <View style={styles.badge}><Icon name="sos" size={18} color="#fff" weight="bold" animation={Effects.pulse} /></View>
       <View style={styles.text}>
-        <Text style={styles.title}>🆘 {t.root.fromName} needs help{others.length > 1 ? ` (+${others.length - 1} more)` : ''}</Text>
+        <Text style={styles.title}>{t.root.fromName} needs help{others.length > 1 ? ` (+${others.length - 1} more)` : ''}</Text>
         <Text style={styles.sub}>
           {dist ? `${dist} · ` : ''}location {timeAgo(t.updatedAt / 1000)}
           {t.coming.length > 0 ? ` · ${t.coming.map(r => r.name).join(', ')} coming` : ''}
@@ -97,7 +100,7 @@ export default function SosBanner() {
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         accessibilityLabel="Hide this SOS banner"
       >
-        <Text style={styles.close}>✕</Text>
+        <Icon name="xmark" size={14} color={Colors.textSecondary} weight="semibold" />
       </TouchableOpacity>
     </TouchableOpacity>
   );
@@ -109,13 +112,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.md,
-    gap: Spacing.sm,
-    borderBottomWidth: 1,
+    gap: Spacing.sm + 2,
+    marginHorizontal: Spacing.sm,
+    marginTop: Spacing.xs,
+    borderRadius: BorderRadius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
   },
-  mine: { backgroundColor: Colors.error + '33', borderBottomColor: Colors.error },
-  theirs: { backgroundColor: Colors.error + '22', borderBottomColor: Colors.error + '88' },
+  mine: { backgroundColor: 'rgba(255, 90, 95, 0.2)', borderColor: Colors.error },
+  theirs: { backgroundColor: 'rgba(255, 90, 95, 0.14)', borderColor: 'rgba(255, 90, 95, 0.55)' },
+  badge: {
+    width: 34, height: 34, borderRadius: 17, backgroundColor: Colors.error,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: Colors.error, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 8,
+  },
   text: { flex: 1 },
-  title: { color: Colors.error, fontSize: FontSize.sm, fontWeight: '900' },
+  title: { fontFamily: Fonts.rounded, color: '#ffb0b2', fontSize: FontSize.md, fontWeight: '800' },
   sub: { color: Colors.textPrimary, fontSize: FontSize.xs, marginTop: 2 },
   coming: { color: Colors.success, fontSize: FontSize.xs, fontWeight: '700', marginTop: 2 },
   okBtn: {
@@ -124,6 +135,5 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 18,
   },
-  okText: { color: '#000', fontSize: FontSize.sm, fontWeight: '900' },
-  close: { color: Colors.textSecondary, fontSize: 16, paddingHorizontal: 4 },
+  okText: { fontFamily: Fonts.rounded, color: '#06210f', fontSize: FontSize.sm, fontWeight: '800' },
 });

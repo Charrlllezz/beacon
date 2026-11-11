@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { View, TextInput, TouchableOpacity, Text, StyleSheet, Platform, Keyboard } from 'react-native';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors, Spacing, FontSize, Gradients, Fonts } from '../../config/theme';
 import { hapticLight } from '../../utils/haptics';
 import { MAX_MESSAGE_BYTES, bytesLeft, utf8Length } from '../../utils/textBytes';
+import Icon from '../ui/Icon';
 
 interface Props {
   // false: not taken (e.g. radio not ready), so keep the text.
@@ -29,6 +31,7 @@ export default function ChatInput({ onSend, onQuickAction, disabled }: Props) {
   }
 
   const left = bytesLeft(text);
+  const canSend = !!text.trim() && !disabled;
 
   function handleDismissKeyboard() {
     hapticLight();
@@ -44,16 +47,19 @@ export default function ChatInput({ onSend, onQuickAction, disabled }: Props) {
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityLabel="Hide keyboard"
         >
-          <Text style={styles.dismissBtnText}>⌄</Text>
+          <Icon name="chevron.down" size={18} color={Colors.textSecondary} weight="semibold" />
         </TouchableOpacity>
       )}
 
       <TouchableOpacity
         style={styles.quickBtn}
-        onPress={onQuickAction}
+        onPress={() => { hapticLight(); onQuickAction(); }}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel="Quick actions"
+        testID="chat-quick-actions"
       >
-        <Text style={styles.quickBtnText}>＋</Text>
+        <Icon name="plus" size={20} color={Colors.primary} weight="semibold" />
       </TouchableOpacity>
 
       <TextInput
@@ -79,87 +85,74 @@ export default function ChatInput({ onSend, onQuickAction, disabled }: Props) {
       )}
 
       <TouchableOpacity
-        style={[styles.sendBtn, (!text.trim() || disabled) && styles.sendBtnDisabled]}
+        style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}
         onPress={handleSend}
-        disabled={!text.trim() || disabled}
+        disabled={!canSend}
+        accessibilityRole="button"
+        accessibilityLabel="Send"
+        testID="chat-send"
       >
-        <Text style={styles.sendBtnText}>↑</Text>
+        {canSend && (
+          <LinearGradient colors={Gradients.sunset} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+        )}
+        <Icon name="arrow.up" size={18} color={canSend ? '#fff' : Colors.textMuted} weight="bold" />
       </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  counter: { color: Colors.textSecondary, fontSize: FontSize.xs, marginHorizontal: Spacing.xs, alignSelf: 'center' },
+  counter: { fontFamily: Fonts.rounded, color: Colors.textSecondary, fontSize: FontSize.xs, marginHorizontal: Spacing.xs, alignSelf: 'center', fontVariant: ['tabular-nums'] },
   counterFull: { color: Colors.warning },
   container: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.glassBorder,
     backgroundColor: Colors.surface,
     gap: 8,
   },
   quickBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.surfaceElevated,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255, 126, 74, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.primary + '44',
     marginBottom: 1,
   },
   dismissBtn: {
-    width: 36,
-    height: 44,
+    width: 32,
+    height: 42,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 1,
   },
-  dismissBtnText: {
-    color: Colors.textSecondary,
-    fontSize: 28,
-    lineHeight: 28,
-    fontWeight: '700',
-  },
-  quickBtnText: {
-    color: Colors.primary,
-    fontSize: 22,
-    lineHeight: 26,
-    fontWeight: '600',
-  },
   input: {
     flex: 1,
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: BorderRadius.lg,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 21,
     paddingHorizontal: Spacing.md,
-    paddingTop: Platform.OS === 'ios' ? 10 : 8,
-    paddingBottom: Platform.OS === 'ios' ? 10 : 8,
+    paddingTop: Platform.OS === 'ios' ? 11 : 8,
+    paddingBottom: Platform.OS === 'ios' ? 11 : 8,
     color: Colors.textPrimary,
     fontSize: FontSize.md,
     maxHeight: 120,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
   },
   sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primary,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 1,
   },
   sendBtnDisabled: {
-    backgroundColor: Colors.textMuted,
-  },
-  sendBtnText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
   },
 });
