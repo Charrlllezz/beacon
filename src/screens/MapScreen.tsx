@@ -57,6 +57,15 @@ export default function MapScreen() {
   const myLocation = useCrewStore(s => s.myLocation);
   const focusNodeId = useCrewStore(s => s.focusNodeId);
   const setFocusNode = useCrewStore(s => s.setFocusNode);
+  // Sent here to see a friend ("Show on map"): show them, not the first-visit
+  // tutorial. The tutorial waits for the next time you open the map.
+  const [tipDeferred, setTipDeferred] = useState(focusNodeId !== null);
+  React.useEffect(() => { if (focusNodeId !== null) setTipDeferred(true); }, [focusNodeId]);
+  // Decided on arrival: clearing it on the way out would pop the tutorial
+  // (a Modal) over whichever tab you went to.
+  useFocusEffect(useCallback(() => {
+    setTipDeferred(useCrewStore.getState().focusNodeId !== null);
+  }, []));
   const tags = useTagStore(s => s.tags);
   const addTag = useTagStore(s => s.addTag);
   const myNodeNum = useDeviceStore(s => s.myNodeNum);
@@ -457,6 +466,7 @@ export default function MapScreen() {
       <FirstOpenTip
         // v2: re-shown once so existing testers learn about pin age.
         storageKey="rndvu_tip_map_v2"
+        deferred={tipDeferred}
         title="Your Crew Map"
         tips={[
           { icon: '📍', title: 'Crew Pins', description: "The label under a pin says how old it is. Faded pins are over 15 minutes old: where they were, not where they are." },
