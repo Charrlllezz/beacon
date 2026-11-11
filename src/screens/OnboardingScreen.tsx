@@ -14,7 +14,6 @@ import { provisionRadio, startCrew } from '../services/crew/crewActions';
 import { confirmJoin } from '../services/crew/confirmJoin';
 import { useCrewKeyStore } from '../store/useCrewKeyStore';
 import QrScanner from '../components/crew/QrScanner';
-import { useMessagesStore } from '../store/useMessagesStore';
 import { requestNotificationPermission } from '../services/notifications/LocalNotifications';
 
 interface Props {
@@ -92,7 +91,15 @@ export default function OnboardingScreen({ onComplete }: Props) {
       // any admin write — both setOwner and setChannel require myNodeNum.
       const nodeNum = await waitForMyNode(10000);
       if (nodeNum === null) {
-        console.warn('waitForMyNode timed out on onboarding; skipping device admin writes');
+        // The radio connected but didn't answer in time, so nothing was
+        // written to it. Don't land on "You're in" with a radio that can't
+        // reach the crew: flag the retry and say so, as when setup fails.
+        console.warn('waitForMyNode timed out on onboarding; flagging reprovision');
+        try { await AsyncStorage.setItem('rndvu_needs_reprovision', '1'); } catch {}
+        Alert.alert(
+          "Setup didn't finish",
+          "Your device connected but didn't answer in time, so it isn't set up yet. RNDVU will retry automatically when it reconnects. If messages won't send, open the gear menu (top-right) and tap Re-provision Device.",
+        );
       } else {
         // Display name goes to the radio inside the provisioning transaction
         // below (a separate set_owner would reboot the radio a second time).
@@ -258,7 +265,8 @@ export default function OnboardingScreen({ onComplete }: Props) {
                 onPress={() => {
                   if (displayName.trim()) {
                     useCrewStore.getState().setDisplayName(displayName.trim(), shortName.trim() || displayName.trim().slice(0, 4));
-                    useMessagesStore.getState().clearMessages();
+                    // Messages are kept: Reset Pairing comes back through here
+                    // and promises "your messages are kept".
                     handleScan();
                   }
                 }}
