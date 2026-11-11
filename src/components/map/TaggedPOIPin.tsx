@@ -2,16 +2,8 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { Colors, FontSize, BorderRadius } from '../../config/theme';
-import type { TaggedPOI, TagCategory } from '../../types/festival';
-
-const CATEGORY_ICONS: Record<TagCategory, string> = {
-  stage: '🎵',
-  food: '🍔',
-  water: '💧',
-  restroom: '🚻',
-  camp: '⛺',
-  custom: '📌',
-};
+import type { TaggedPOI } from '../../types/festival';
+import { TAG_CATEGORY_ICONS as CATEGORY_ICONS } from './tagCategories';
 
 interface Props {
   poi: TaggedPOI;
