@@ -29,6 +29,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
   const crewKey = useCrewKeyStore(s => s.crew);
   const [displayName, setDisplayName] = useState('');
   const [shortName, setShortName] = useState('');
+  const shortNameRef = useRef<TextInput>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -232,6 +233,7 @@ export default function OnboardingScreen({ onComplete }: Props) {
             <ScrollView
               contentContainerStyle={styles.centered}
               keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
             >
               <Text style={styles.appName}>What's your name?</Text>
               <Text style={styles.tagline}>This is how your crew will see you</Text>
@@ -248,6 +250,9 @@ export default function OnboardingScreen({ onComplete }: Props) {
                 }}
                 maxLength={20}
                 autoFocus
+                returnKeyType="next"
+                submitBehavior="submit"
+                onSubmitEditing={() => shortNameRef.current?.focus()}
                 keyboardAppearance="dark"
               />
               <TextInput
@@ -257,6 +262,8 @@ export default function OnboardingScreen({ onComplete }: Props) {
                 value={shortName}
                 onChangeText={setShortName}
                 maxLength={4}
+                ref={shortNameRef}
+                returnKeyType="done"
                 keyboardAppearance="dark"
               />
               <Text style={styles.hintText}>Short name: 4 chars max, shown on map pins</Text>
