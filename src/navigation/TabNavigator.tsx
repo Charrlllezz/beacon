@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../config/theme';
 import ChatScreen from '../screens/ChatScreen';
 import MapScreen from '../screens/MapScreen';
+import { DEMO } from '../config/demo';
 import ScheduleScreen from '../screens/ScheduleScreen';
 import CrewScreen from '../screens/CrewScreen';
 import { festivalConfig } from '../services/festival/FestivalConfig';
@@ -20,7 +21,8 @@ export default function TabNavigator() {
   // No Lineup tab until the festival's set times are in the config: an empty
   // tab with dead controls is worse than none. The navigator is keyed on the
   // festival (App.tsx), so this re-checks when the festival changes.
-  const hasLineup = festivalConfig.getAllStages().some(s => s.schedule.length > 0);
+  // The pitch demo has no real set times to show.
+  const hasLineup = !DEMO && festivalConfig.getAllStages().some(s => s.schedule.length > 0);
 
   return (
     <Tab.Navigator

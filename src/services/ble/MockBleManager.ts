@@ -1,3 +1,4 @@
+import { DEMO } from '../../config/demo';
 import type { FromRadio } from '../../types/mesh';
 import {
   decodeFromRadio,
@@ -75,7 +76,7 @@ export class MockBleManager {
   }
 
   async scanAndConnect(): Promise<{ id: string; name: string }[]> {
-    return [{ id: 'mock-device-001', name: 'Meshtastic_MOCK' }];
+    return [{ id: 'mock-device-001', name: DEMO ? 'RNDVU-7F3A' : 'Meshtastic_MOCK' }];
   }
 
   // Mock never loses the link on its own except via simulateDrop/reboot, which
