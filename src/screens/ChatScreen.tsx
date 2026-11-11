@@ -268,7 +268,7 @@ export default function ChatScreen() {
         keyboardVerticalOffset={0}
       >
         {messages.length === 0 ? (
-          <Pressable style={styles.flex} onPress={Keyboard.dismiss}>
+          <Pressable style={styles.flex} onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.emptyState}>
               <Text style={styles.emptyEmoji}>👋</Text>
               <Text style={styles.emptyTitle}>Welcome to RNDVU!</Text>
@@ -317,8 +317,14 @@ export default function ChatScreen() {
       {/* Rally picker modal */}
       <Modal visible={showRallyPicker} transparent animationType="slide" onRequestClose={() => setShowRallyPicker(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <Pressable style={styles.meetupBackdrop} onPress={() => setShowRallyPicker(false)}>
-            <Pressable style={styles.meetupSheet} onPress={() => {}}>
+          <Pressable style={styles.meetupBackdrop} onPress={() => setShowRallyPicker(false)} accessible={false}>
+            <Pressable
+              style={styles.meetupSheet}
+              onPress={() => {}}
+              accessible={false}
+              accessibilityViewIsModal
+              onAccessibilityEscape={() => setShowRallyPicker(false)}
+            >
               <View style={styles.meetupHandle} />
               <Text style={styles.meetupTitle}>Rally Point</Text>
 
@@ -381,8 +387,16 @@ export default function ChatScreen() {
       {/* Meetup picker modal */}
       <Modal visible={showMeetupPicker} transparent animationType="slide" onRequestClose={() => setShowMeetupPicker(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <Pressable style={styles.meetupBackdrop} onPress={() => setShowMeetupPicker(false)}>
-            <Pressable style={styles.meetupSheet} onPress={() => {}}>
+          {/* accessible={false}: a Pressable is one VoiceOver element by default,
+              which hid every control in the sheet. */}
+          <Pressable style={styles.meetupBackdrop} onPress={() => setShowMeetupPicker(false)} accessible={false}>
+            <Pressable
+              style={styles.meetupSheet}
+              onPress={() => {}}
+              accessible={false}
+              accessibilityViewIsModal
+              onAccessibilityEscape={() => setShowMeetupPicker(false)}
+            >
             <View style={styles.meetupHandle} />
             <Text style={styles.meetupTitle}>Set a Meetup</Text>
 
