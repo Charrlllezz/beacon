@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { GpsPoint } from '../types/festival';
 import { BUNDLED_FESTIVALS } from '../services/festival/festivals';
 import { pickFestival, type SelectionReason } from '../services/festival/FestivalSelection';
+import { DEMO, DEMO_FESTIVAL_ID } from '../config/demo';
 
 const OVERRIDE_KEY = 'rndvu_festival_override';
 
@@ -18,13 +19,13 @@ interface FestivalState {
   loadOverride: () => Promise<void>;
 }
 
-const initial = pickFestival(BUNDLED_FESTIVALS, new Date(), null);
+const initial = pickFestival(BUNDLED_FESTIVALS, new Date(), null, DEMO ? DEMO_FESTIVAL_ID : null);
 let lastLocation: GpsPoint | null = null;
 
 export const useFestivalStore = create<FestivalState>((set, get) => ({
   activeId: initial.config.festival.id,
   reason: initial.reason,
-  overrideId: null,
+  overrideId: DEMO ? DEMO_FESTIVAL_ID : null,
 
   refresh: (now = new Date(), location) => {
     if (location !== undefined) lastLocation = location;
@@ -43,6 +44,7 @@ export const useFestivalStore = create<FestivalState>((set, get) => ({
   },
 
   loadOverride: async () => {
+    if (DEMO) return get().refresh();
     try {
       const id = await AsyncStorage.getItem(OVERRIDE_KEY);
       // Ignore an override for a festival this build no longer bundles.

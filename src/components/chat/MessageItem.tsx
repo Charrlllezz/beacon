@@ -5,6 +5,7 @@ import HeadingCard from './HeadingCard';
 import RallyCard from './RallyCard';
 import SOSCard from './SOSCard';
 import MeetupCard from './MeetupCard';
+import TagCard from './TagCard';
 import type { Message } from '../../types/messages';
 
 interface Props {
@@ -28,13 +29,13 @@ const MessageItem = memo(({ item, myNodeNum }: Props) => {
         : `Going to ${item.artistId}`;
       return <MessageBubble message={{ ...item, type: 'text', text: label }} isMine={isMine} />;
     }
-    case 'tag': {
-      const label = `📌 Tagged: ${item.name} (${item.lat.toFixed(4)}, ${item.lng.toFixed(4)})`;
-      return <MessageBubble message={{ ...item, type: 'text', text: label }} isMine={isMine} />;
-    }
+    case 'tag':     return <TagCard     message={item} isMine={isMine} />;
     case 'color': return null;
     case 'ungoing': return null; // handled in PacketRouter; never rendered
     case 'reply': return null;   // shown on the card it answers
+    case 'find':
+    case 'findAnswer':
+    case 'livePos': return null; // Find me: handled in PacketRouter, never chat
     default: return <MessageBubble message={item} isMine={isMine} />;
   }
 });

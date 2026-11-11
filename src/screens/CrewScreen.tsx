@@ -4,7 +4,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { bleService } from '../services/ble/BleManager';
 import { useNavigation } from '@react-navigation/native';
-import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts, crewColor } from '../config/theme';
+import Icon from '../components/ui/Icon';
+import GradientButton from '../components/ui/GradientButton';
+import { glassCard } from '../components/ui/Glass';
 import { useCrewStore } from '../store/useCrewStore';
 import type { CrewSortMode } from '../store/useCrewStore';
 import { useScheduleStore } from '../store/useScheduleStore';
@@ -22,8 +25,11 @@ import { CREW_COLORS } from './MapScreen';
 import type { CrewMember } from '../types/crew';
 import type { Stage } from '../types/festival';
 import { useEndTripStore, debriefHandled, skipDebrief } from '../components/debrief/EndTripSheet';
-import { shouldOfferDebrief } from '../utils/debrief';
+import { shouldOfferDebrief, debriefTarget } from '../utils/debrief';
+import { BUNDLED_FESTIVALS } from '../services/festival/festivals';
+import { useNow } from '../utils/useNow';
 import CrewKeyCard from '../components/crew/CrewKeyCard';
+import FindSheet from '../components/crew/FindSheet';
 
 const BATTERY_CRITICAL = 15;
 
@@ -37,12 +43,12 @@ function signalBars(snr?: number): { bars: number; color: string } {
 interface CrewMemberCardProps {
   member: CrewMember;
   myLocation: { lat: number; lng: number } | null;
-  onFindOnMap: (nodeId: number) => void;
+  onFind: (nodeId: number) => void;
   watchingStatus?: string;
   locationCtx?: string;
 }
 
-const CrewMemberCard = memo(({ member, myLocation, onFindOnMap, watchingStatus, locationCtx }: CrewMemberCardProps) => {
+const CrewMemberCard = memo(({ member, myLocation, onFind, watchingStatus, locationCtx }: CrewMemberCardProps) => {
   const online = isOnline(member.lastHeard);
   const dist =
     myLocation && member.lat && member.lng
@@ -52,19 +58,19 @@ const CrewMemberCard = memo(({ member, myLocation, onFindOnMap, watchingStatus, 
   const initials = member.shortName.slice(0, 2).toUpperCase();
   const lowBattery = member.batteryLevel !== undefined && member.batteryLevel <= BATTERY_CRITICAL;
   const signal = signalBars(member.snr);
-  const hasLocation = member.lat !== undefined && member.lng !== undefined;
+  const color = crewColor(member.nodeId, member.color);
 
   return (
     <TouchableOpacity
       style={[styles.card, lowBattery && styles.cardLowBattery]}
-      onPress={() => hasLocation && onFindOnMap(member.nodeId)}
-      activeOpacity={hasLocation ? 0.7 : 1}
+      onPress={() => onFind(member.nodeId)}
+      activeOpacity={0.7}
     >
-      <View style={[styles.avatar, online && styles.avatarOnline, member.color && { borderColor: member.color }]}>
-        <Text style={member.emoji ? styles.avatarEmoji : styles.avatarText}>
+      <View style={[styles.avatar, { borderColor: color, backgroundColor: color + '24' }, !online && styles.avatarOffline]}>
+        <Text style={member.emoji ? styles.avatarEmoji : [styles.avatarText, { color }]}>
           {member.emoji ?? initials}
         </Text>
-        <View style={[styles.statusDot, { backgroundColor: online ? Colors.success : '#2a2a3a' }]} />
+        <View style={[styles.statusDot, { backgroundColor: online ? Colors.success : Colors.textMuted }]} />
       </View>
 
       <View style={styles.info}>
@@ -79,7 +85,7 @@ const CrewMemberCard = memo(({ member, myLocation, onFindOnMap, watchingStatus, 
             <Text style={styles.metaText}> · {locationCtx}</Text>
           )}
           {dist !== null && (
-            <Text style={styles.metaText}> · {formatDistance(dist)}</Text>
+            <Text style={styles.metaText}> · <Text style={styles.metaNumber}>{formatDistance(dist)}</Text></Text>
           )}
         </View>
         {lowBattery && (
@@ -142,6 +148,7 @@ export default function CrewScreen() {
   const [debugVisible, setDebugVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [findNodeId, setFindNodeId] = useState<number | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selfMember = myNodeNum ? crewMembers[myNodeNum] : null;
@@ -151,12 +158,13 @@ export default function CrewScreen() {
   const [offerDebrief, setOfferDebrief] = useState(false);
   const endTripOpen = useEndTripStore(s => s.open);
   useEffect(() => {
-    const c = festivalConfig.getConfig();
-    if (!shouldOfferDebrief(c, Date.now())) { setOfferDebrief(false); return; }
+    const c = debriefTarget(BUNDLED_FESTIVALS, Date.now());
+    if (!c || !shouldOfferDebrief(c, Date.now())) { setOfferDebrief(false); return; }
     debriefHandled(c.festival.id).then(done => setOfferDebrief(!done));
   }, [endTripOpen]);
 
   const handleFindOnMap = useCallback((nodeId: number) => {
+    setFindNodeId(null);
     setFocusNode(nodeId);
     (navigation as any).navigate('Map');
   }, [navigation, setFocusNode]);
@@ -339,8 +347,10 @@ export default function CrewScreen() {
     }
   }, [setMyColor]);
 
+  // Ticks, so "Watching X" moves on when a set ends.
+  const nowMs = useNow(60_000);
   const watchingStatusMap = useMemo(() => {
-    const now = new Date();
+    const now = new Date(nowMs);
     const map = new Map<number, string | undefined>();
     for (const member of members) {
       const activePick = getActivePickForNode(member.nodeId, (stageId, artistId) =>
@@ -363,7 +373,7 @@ export default function CrewScreen() {
       }
     }
     return map;
-  }, [members, goingEntries, getActivePickForNode]);
+  }, [members, goingEntries, getActivePickForNode, nowMs]);
 
   const locationCtxMap = useMemo(() => {
     const map = new Map<string, string | undefined>();
@@ -399,11 +409,11 @@ export default function CrewScreen() {
       key={member.nodeId}
       member={member}
       myLocation={myLocation}
-      onFindOnMap={handleFindOnMap}
+      onFind={setFindNodeId}
       watchingStatus={watchingStatusMap.get(member.nodeId)}
       locationCtx={locationCtxMap.get(`${member.lat},${member.lng}`)}
     />
-  ), [myLocation, handleFindOnMap, watchingStatusMap, locationCtxMap]);
+  ), [myLocation, watchingStatusMap, locationCtxMap]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -417,7 +427,7 @@ export default function CrewScreen() {
       {/* Search bar */}
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
-          <Text style={styles.searchIcon}>🔍</Text>
+          <View style={styles.searchIcon}><Icon name="magnifyingglass" size={15} color={Colors.textMuted} /></View>
           <TextInput
             style={styles.searchInput}
             placeholder="Search crew…"
@@ -428,8 +438,8 @@ export default function CrewScreen() {
             autoCorrect={false}
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Text style={styles.searchClear}>✕</Text>
+            <TouchableOpacity onPress={() => setSearchQuery('')} accessibilityLabel="Clear search" style={styles.searchClear}>
+              <Icon name="xmark.circle.fill" size={16} color={Colors.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -450,11 +460,9 @@ export default function CrewScreen() {
               <Text style={styles.metaText}>Two minutes. It decides what gets fixed next.</Text>
             </View>
             <View style={{ gap: 6 }}>
-              <TouchableOpacity style={styles.debriefBtn} onPress={() => useEndTripStore.getState().setOpen(true)}>
-                <Text style={styles.colorButtonText}>End trip</Text>
-              </TouchableOpacity>
+              <GradientButton compact label="End trip" onPress={() => useEndTripStore.getState().setOpen(true)} />
               <TouchableOpacity
-                onPress={() => { skipDebrief(festivalConfig.getConfig().festival.id); setOfferDebrief(false); }}
+                onPress={() => { skipDebrief((debriefTarget(BUNDLED_FESTIVALS, Date.now()) ?? festivalConfig.getConfig()).festival.id); setOfferDebrief(false); }}
                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
               >
                 <Text style={styles.debriefSkip}>Not now</Text>
@@ -469,10 +477,10 @@ export default function CrewScreen() {
             <Text style={styles.sectionLabel}>YOU</Text>
             <View style={[styles.card, styles.youCard]}>
               <TouchableOpacity
-                style={[styles.avatar, { borderColor: myColor ?? Colors.primary }]}
+                style={[styles.avatar, { borderColor: myColor ?? Colors.primary, backgroundColor: (myColor ?? Colors.primary) + '24' }]}
                 onPress={() => setColorPickerVisible(true)}
               >
-                <Text style={styles.avatarText}>
+                <Text style={[styles.avatarText, { color: myColor ?? Colors.primary }]}>
                   {selfMember.shortName.slice(0, 2).toUpperCase()}
                 </Text>
                 <View style={[styles.statusDot, { backgroundColor: Colors.success }]} />
@@ -491,9 +499,10 @@ export default function CrewScreen() {
                 </View>
               </View>
               <TouchableOpacity
-                style={[styles.colorButton, { backgroundColor: myColor ?? Colors.primary }]}
+                style={styles.colorButton}
                 onPress={() => setColorPickerVisible(true)}
               >
+                <View style={[styles.colorButtonDot, { backgroundColor: myColor ?? Colors.primary }]} />
                 <Text style={styles.colorButtonText}>Color</Text>
               </TouchableOpacity>
             </View>
@@ -530,7 +539,7 @@ export default function CrewScreen() {
         )}
         {members.length === 0 && !selfMember && (
           <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>?</Text>
+            <View style={styles.emptyIcon}><Icon name="person.3" size={44} color={Colors.textMuted} /></View>
             <Text style={styles.emptyTitle}>No crew yet</Text>
             <Text style={styles.emptySubtitle}>
               They'll appear when they connect to the mesh
@@ -565,17 +574,26 @@ export default function CrewScreen() {
         </TouchableOpacity>
       </Modal>
 
-      <Modal visible={debugVisible} animationType="slide" onRequestClose={() => setDebugVisible(false)}>
+      {/* pageSheet like the other sheets: full screen, the safe-area insets
+          read 0 inside the Modal and Done sat under the status bar. */}
+      <Modal
+        visible={debugVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setDebugVisible(false)}
+      >
         <DebugScreen onClose={() => setDebugVisible(false)} />
       </Modal>
+
+      <FindSheet nodeId={findNodeId} onClose={() => setFindNodeId(null)} onShowOnMap={handleFindOnMap} />
 
       <FirstOpenTip
         storageKey="rndvu_tip_crew"
         title="Your Crew"
         tips={[
-          { icon: '📍', title: 'Find on Map', description: 'Tap any crew member to jump to their location on the map' },
-          { icon: '🔋', title: 'Status Info', description: "See everyone's battery level, signal strength, and distance from you" },
-          { icon: '🎨', title: 'Pick Your Color', description: 'Choose a color for your map pin so your crew can spot you easily' },
+          { icon: 'location.north.line', title: 'Find Them', description: 'Tap any crew member for an arrow pointing to them, or see them on the map' },
+          { icon: 'battery.75percent', title: 'Status Info', description: "See everyone's battery level, signal strength, and distance from you" },
+          { icon: 'paintpalette', title: 'Pick Your Color', description: 'Choose a color for your map pin so your crew can spot you easily' },
         ]}
       />
     </SafeAreaView>
@@ -592,24 +610,25 @@ const styles = StyleSheet.create({
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.sm,
-    paddingHorizontal: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    height: 38,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: Spacing.sm + 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
+    height: 40,
   },
-  searchIcon: { fontSize: 14, marginRight: 6 },
+  searchIcon: { marginRight: 8 },
   searchInput: {
     flex: 1,
     color: Colors.textPrimary,
     fontSize: FontSize.sm,
     paddingVertical: 0,
   },
-  searchClear: { color: Colors.textMuted, fontSize: 14, paddingHorizontal: 4 },
+  searchClear: { paddingHorizontal: 4 },
   content: { padding: Spacing.md, paddingBottom: 32 },
   sectionLabel: {
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
+    fontFamily: Fonts.rounded,
     fontSize: FontSize.xs,
     fontWeight: '800',
     letterSpacing: 1.2,
@@ -622,29 +641,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.sm,
   },
-  sortToggle: { flexDirection: 'row', gap: 2 },
+  sortToggle: {
+    flexDirection: 'row', gap: 2, padding: 2, borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)', borderWidth: StyleSheet.hairlineWidth, borderColor: Colors.glassBorder,
+  },
   sortBtn: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.surface,
   },
-  sortBtnActive: { backgroundColor: Colors.primary },
-  sortBtnText: { color: Colors.textSecondary, fontSize: FontSize.xs, fontWeight: '700' },
-  sortBtnTextActive: { color: '#fff' },
+  sortBtnActive: { backgroundColor: Colors.primary + '2e' },
+  sortBtnText: { color: Colors.textSecondary, fontFamily: Fonts.rounded, fontSize: FontSize.xs, fontWeight: '700' },
+  sortBtnTextActive: { color: Colors.primary },
   card: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.md,
+    ...glassCard,
     padding: Spacing.md,
     marginBottom: Spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
   },
   cardLowBattery: {
-    borderColor: Colors.error + '44',
-    backgroundColor: Colors.error + '08',
+    borderColor: Colors.error + '55',
+    backgroundColor: Colors.error + '0d',
   },
   avatar: {
     width: 48,
@@ -656,10 +674,10 @@ const styles = StyleSheet.create({
     marginRight: Spacing.md,
     position: 'relative',
     borderWidth: 2,
-    borderColor: '#2a2a3a',
+    borderColor: Colors.glassBorder,
   },
-  avatarOnline: { borderColor: Colors.success },
-  avatarText: { color: Colors.textPrimary, fontWeight: '700', fontSize: FontSize.sm },
+  avatarOffline: { opacity: 0.5 },
+  avatarText: { color: Colors.textPrimary, fontFamily: Fonts.rounded, fontWeight: '800', fontSize: FontSize.md },
   avatarEmoji: { fontSize: 22 },
   statusDot: {
     position: 'absolute',
@@ -669,18 +687,19 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: Colors.surface,
+    borderColor: Colors.background,
   },
   info: { flex: 1 },
-  name: { color: Colors.textPrimary, fontSize: FontSize.md, fontWeight: '600' },
+  name: { color: Colors.textPrimary, fontFamily: Fonts.rounded, fontSize: FontSize.md + 1, fontWeight: '700' },
   meta: { flexDirection: 'row', marginTop: 4, flexWrap: 'wrap' },
-  metaText: { color: Colors.textSecondary, fontSize: FontSize.xs },
+  metaText: { color: Colors.textSecondary, fontSize: FontSize.xs + 1 },
+  metaNumber: { fontFamily: Fonts.rounded, fontWeight: '700', color: Colors.textPrimary },
   metaTextOffline: { color: Colors.textMuted, fontWeight: '700' },
   lowBatteryText: { color: Colors.error, fontSize: FontSize.xs, marginTop: 4, fontWeight: '600' },
   watchingText: { color: Colors.primary, fontSize: FontSize.xs, marginTop: 4, fontWeight: '600' },
   rightCol: { alignItems: 'flex-end', gap: 6, minWidth: 46 },
   battery: { alignItems: 'flex-end' },
-  batteryPct: { fontSize: FontSize.xs, fontWeight: '700', marginBottom: 4 },
+  batteryPct: { fontFamily: Fonts.rounded, fontSize: FontSize.sm, fontWeight: '800', marginBottom: 4 },
   batteryTrack: {
     width: 40,
     height: 5,
@@ -695,20 +714,19 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   colorButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: BorderRadius.full,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
   },
-  colorButtonText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '700' },
+  colorButtonDot: { width: 12, height: 12, borderRadius: 6 },
+  colorButtonText: { color: Colors.textPrimary, fontFamily: Fonts.rounded, fontSize: FontSize.xs + 1, fontWeight: '700' },
   debriefCard: { borderColor: Colors.primary + '66', backgroundColor: Colors.primary + '11' },
-  debriefBtn: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-  },
   debriefSkip: { color: Colors.textSecondary, fontSize: FontSize.xs, textAlign: 'center' },
   modalOverlay: {
     flex: 1,
@@ -717,32 +735,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   colorPicker: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
+    maxWidth: 320,
   },
   colorPickerTitle: {
     color: Colors.textPrimary,
-    fontSize: FontSize.md,
+    fontFamily: Fonts.rounded,
+    fontSize: FontSize.lg,
     fontWeight: '700',
     marginBottom: Spacing.md,
   },
-  swatchRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: Spacing.sm },
+  swatchRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: Spacing.md - 4 },
   swatch: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     borderWidth: 2,
     borderColor: 'transparent',
   },
   swatchSelected: { borderColor: '#fff', borderWidth: 3 },
   empty: { flex: 1, alignItems: 'center', paddingTop: 80 },
-  emptyIcon: { fontSize: 48, color: Colors.textMuted, marginBottom: Spacing.md, fontWeight: '700' },
+  emptyIcon: { marginBottom: Spacing.md },
   emptyTitle: {
     color: Colors.textPrimary,
+    fontFamily: Fonts.rounded,
     fontSize: FontSize.lg,
     fontWeight: '600',
     marginBottom: 8,

@@ -1,4 +1,4 @@
-import type { Message, TextMessage, HeadingMessage, RallyMessage, SOSMessage, GoingMessage, UngoingMessage, ColorMessage, TagMessage, MeetupMessage, ReplyMessage, ReplyKind } from '../../types/messages';
+import type { Message, TextMessage, HeadingMessage, RallyMessage, SOSMessage, GoingMessage, UngoingMessage, ColorMessage, TagMessage, MeetupMessage, ReplyMessage, ReplyKind, FindMessage, FindAnswerMessage, LivePosMessage } from '../../types/messages';
 import { REPLY_KINDS } from '../../types/messages';
 import type { TagCategory } from '../../types/festival';
 
@@ -115,6 +115,23 @@ export function parseMessage(
         if (!REPLY_KINDS.includes(kind)) throw new Error('Unknown reply');
         return { ...base, type: 'reply', kind } as ReplyMessage;
       }
+      case 'F': {
+        const target = parseInt(parts[2], 16);
+        if (!parts[2] || isNaN(target)) throw new Error('Invalid find');
+        return { ...base, type: 'find', target: target >>> 0, cancel: parts[3] === '0' } as FindMessage;
+      }
+      case 'A': {
+        const finder = parseInt(parts[2], 16);
+        if (!parts[2] || isNaN(finder) || (parts[3] !== '1' && parts[3] !== '0')) throw new Error('Invalid find answer');
+        return { ...base, type: 'findAnswer', finder: finder >>> 0, helping: parts[3] === '1' } as FindAnswerMessage;
+      }
+      case 'P': {
+        const [latStr, lngStr] = (parts[2] ?? '').split(',');
+        const lat = parseFloat(latStr);
+        const lng = parseFloat(lngStr);
+        if (isNaN(lat) || isNaN(lng)) throw new Error('Invalid coords');
+        return { ...base, type: 'livePos', lat, lng } as LivePosMessage;
+      }
       default:
         return { ...base, type: 'text', text: raw } as TextMessage;
     }
@@ -150,6 +167,20 @@ export function buildColorMessage(color: string): string {
 
 export function buildTagMessage(lat: number, lng: number, name: string, category: TagCategory = 'custom'): string {
   return `MF:T:${lat.toFixed(4)},${lng.toFixed(4)}:${category}:${name.substring(0, 30)}`;
+}
+
+// Find me: ask the crew radio's owner to help find them.
+export function buildFindMessage(target: number, cancel = false): string {
+  return `MF:F:${(target >>> 0).toString(16)}${cancel ? ':0' : ''}`;
+}
+
+export function buildFindAnswerMessage(finder: number, helping: boolean): string {
+  return `MF:A:${(finder >>> 0).toString(16)}:${helping ? 1 : 0}`;
+}
+
+// Five decimals is ~1 m: as precise as phone GPS, still a short packet.
+export function buildLivePosMessage(lat: number, lng: number): string {
+  return `MF:P:${lat.toFixed(5)},${lng.toFixed(5)}`;
 }
 
 // Send with sendText(..., { replyId: <original packetId> }).

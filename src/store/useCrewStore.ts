@@ -22,6 +22,14 @@ function scheduleSave() {
   }, PERSIST_DEBOUNCE_MS);
 }
 
+export interface FocusPoint {
+  lat: number;
+  lng: number;
+  // Tags already have a pin on the map; rally and SOS spots get one dropped.
+  kind: 'tag' | 'rally' | 'sos';
+  label?: string;
+}
+
 interface CrewState {
   crewMembers: Record<number, CrewMember>;
   myLocation: { lat: number; lng: number } | null;
@@ -30,6 +38,8 @@ interface CrewState {
   myLocationIsPhone: boolean;
   myColor: string | null;
   focusNodeId: number | null;
+  // A spot to show on the Map tab, sent from a chat card ("Open Map").
+  focusPoint: FocusPoint | null;
   sortMode: CrewSortMode;
 
   upsertMember: (member: Partial<CrewMember> & { nodeId: number }) => void;
@@ -39,10 +49,12 @@ interface CrewState {
   updateSnr: (nodeId: number, snr: number) => void;
   touchLastHeard: (nodeId: number, lastHeardSeconds: number) => void;
   setMyLocation: (lat: number, lng: number, fromPhone?: boolean) => void;
+  releasePhoneLocation: () => void;
   setMyColor: (color: string) => void;
   loadMyColor: () => Promise<void>;
   loadCrewMembers: () => Promise<void>;
   setFocusNode: (nodeId: number | null) => void;
+  setFocusPoint: (point: FocusPoint | null) => void;
   setSortMode: (mode: CrewSortMode) => void;
   getOnlineMembers: () => CrewMember[];
   getSortedMembers: () => CrewMember[];
@@ -57,6 +69,7 @@ export const useCrewStore = create<CrewState>((set, get) => ({
   myLocationIsPhone: false,
   myColor: null,
   focusNodeId: null,
+  focusPoint: null,
   sortMode: 'alpha' as CrewSortMode,
 
   upsertMember: (partial) =>
@@ -67,21 +80,33 @@ export const useCrewStore = create<CrewState>((set, get) => ({
       // NodeInfo; without this gate, all of them became "crew" (the 35+ random
       // nodes). Only create when the node was heard recently (live RNDVU
       // traffic). Already-known members are always enriched/updated below.
-      if (!existing && partial.lastHeard !== undefined && !isOnline(partial.lastHeard)) {
+      // An hour here, not the in-range cutoff: this only decides who joins
+      // the list, not who shows as in range.
+      if (!existing && partial.lastHeard !== undefined && !isOnline(partial.lastHeard, 3600)) {
         return state;
       }
+      // Drop keys that are present but undefined: the radio's stored record
+      // often lacks battery or last-heard, and spreading those undefineds
+      // wiped a peer's known "6%" (and its low-battery warning) on reconnect.
+      const known = Object.fromEntries(
+        Object.entries(partial).filter(([, v]) => v !== undefined),
+      ) as typeof partial;
+      // Never move last-heard backwards: a replayed record is older than the
+      // packet we just heard from them.
+      const lastHeard = Math.max(known.lastHeard ?? 0, existing?.lastHeard ?? 0) || undefined;
       return {
         crewMembers: {
           ...state.crewMembers,
           [partial.nodeId]: {
             ...existing,
-            ...partial,
+            ...known,
+            lastHeard,
             nodeId: partial.nodeId,
             // Use || not ?? so empty-string name from an unconfigured T-Echo
             // falls back to existing or 'Unknown' instead of rendering blank.
             longName: partial.longName || existing?.longName || 'Unknown',
             shortName: partial.shortName || existing?.shortName || '???',
-            isOnline: partial.isOnline ?? isOnline(partial.lastHeard ?? existing?.lastHeard),
+            isOnline: partial.isOnline ?? isOnline(lastHeard),
           },
         },
       };
@@ -152,6 +177,7 @@ export const useCrewStore = create<CrewState>((set, get) => ({
     }),
 
   setFocusNode: (nodeId) => set({ focusNodeId: nodeId }),
+  setFocusPoint: (point) => set({ focusPoint: point }),
 
   setSortMode: (mode) => set({ sortMode: mode }),
 
@@ -166,6 +192,11 @@ export const useCrewStore = create<CrewState>((set, get) => ({
         myLocationIsPhone: fromPhone ? true : state.myLocationIsPhone,
       };
     }),
+
+  // Phone GPS stopped (app in the background). Let the radio's own position
+  // update myLocation again; otherwise an SOS repeating from a locked phone
+  // kept sending where the phone was when it was locked.
+  releasePhoneLocation: () => set({ myLocationIsPhone: false }),
 
   setMyColor: (color) => {
     set((state) => {

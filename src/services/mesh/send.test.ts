@@ -27,7 +27,7 @@ describe('sendCrewMessage', () => {
 
     const shown = useMessagesStore.getState().messages[0];
     expect(shown).toMatchObject({ type: 'reply', kind: 'omw', replyTo: 0x4242, sendStatus: 'sending', fromNodeId: ME });
-    expect(sendText).toHaveBeenCalledWith('MF:Y:omw', 0, { replyId: 0x4242 });
+    await vi.waitFor(() => expect(sendText).toHaveBeenCalledWith('MF:Y:omw', 0, { replyId: 0x4242 }));
 
     release(0xcafe);
     const result = await pending;
@@ -41,6 +41,21 @@ describe('sendCrewMessage', () => {
     const result = await sendCrewMessage('hello');
     expect(result).toMatchObject({ ok: false, reason: 'failed' });
     expect(useMessagesStore.getState().messages[0].sendStatus).toBe('failed');
+  });
+
+  test('a second message waits for the first instead of being dropped', async () => {
+    const releases: ((id: number) => void)[] = [];
+    sendText.mockImplementation(() => new Promise<number>(r => { releases.push(r); }));
+    const first = sendCrewMessage('one');
+    const second = sendCrewMessage('two');
+    expect(useMessagesStore.getState().messages.map(m => m.sendStatus)).toEqual(['sending', 'sending']);
+
+    await vi.waitFor(() => expect(sendText).toHaveBeenCalledTimes(1));
+    releases[0](1);
+    await vi.waitFor(() => expect(sendText).toHaveBeenCalledTimes(2));
+    expect(sendText.mock.calls.map(c => c[0])).toEqual(['one', 'two']);
+    releases[1](2);
+    expect((await first).ok && (await second).ok).toBe(true);
   });
 
   test('before the radio reports its node number, nothing is sent', async () => {

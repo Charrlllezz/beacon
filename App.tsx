@@ -32,11 +32,20 @@ import {
   requestNotificationPermission,
   scheduleMeetupReminder,
   cancelMeetupReminder,
+  notifyFindRequest,
+  clearFindRequest,
+  findRequestFromResponse,
 } from './src/services/notifications/LocalNotifications';
+import * as Notifications from 'expo-notifications';
+import { tickFind, startHelping, stopHelping, cancelFind } from './src/services/find/FindController';
+import { useFindStore } from './src/store/useFindStore';
+import HelpFindSheet from './src/components/crew/HelpFindSheet';
 import { reminderActions } from './src/services/notifications/meetupReminderSync';
 import { notificationContext } from './src/utils/sos';
 import { loadActiveSos, tickSos, hiddenSos } from './src/services/sos/SosController';
 import { getLocationLabel } from './src/components/chat/MeetupCard';
+import { hapticWarning } from './src/utils/haptics';
+import { DEMO, DEMO_LOCATION } from './src/config/demo';
 
 const DISPLAY_NAME_KEY = 'rndvu_display_name';
 const ONBOARDING_COMPLETE_KEY = 'rndvu_onboarding_complete';
@@ -75,6 +84,11 @@ export default function App() {
     if (AppState.currentState !== 'active') return;
     useOfflineMapStore.getState().ensure(festivalConfig.getConfig());
   }, [activeFestivalId]);
+
+  // Lineup picks belong to one festival; a new festival starts with none.
+  useEffect(() => {
+    loadMyGoingPicks(activeFestivalId);
+  }, [activeFestivalId]);
   const unsubRef = useRef<{ packet?: () => void; status?: () => void; notify?: () => void }>({});
   const gpsSubRef = useRef<Location.LocationSubscription | null>(null);
 
@@ -108,6 +122,42 @@ export default function App() {
     loadActiveSos().then(() => tickSos());
     const sosTimer = setInterval(() => { tickSos(); }, 15_000);
     const unsubSosWake = bleService.onPacket(() => { tickSos(); });
+    // Find me runs the same way: a timer in the foreground, every radio
+    // packet in the background.
+    const findTimer = setInterval(() => { tickFind(); }, 5_000);
+    const unsubFindWake = bleService.onPacket(() => { tickFind(); });
+    // Someone is looking for me: an alert if I'm in the app, a time-sensitive
+    // notification if not. A cancelled or answered request clears it.
+    const unsubFindRequests = useFindStore.subscribe((state, prev) => {
+      if (state.incoming === prev.incoming) return;
+      if (prev.incoming && prev.incoming.finder !== state.incoming?.finder) clearFindRequest(prev.incoming.finder);
+      const req = state.incoming;
+      if (!req) return;
+      if (AppState.currentState === 'active') {
+        hapticWarning();
+        Alert.alert(
+          `${req.finderName} is looking for you`,
+          'Help them find you? Your phone shares your exact spot with them for 10 minutes.',
+          [
+            { text: 'Not now', style: 'cancel', onPress: () => useFindStore.getState().setIncoming(null) },
+            { text: 'Help them find me', onPress: () => { startHelping(req.finder, req.finderName); } },
+          ],
+        );
+      } else {
+        notifyFindRequest(req.finder, req.finderName);
+      }
+    });
+    const onFindResponse = (r: Notifications.NotificationResponse | null) => {
+      const req = findRequestFromResponse(r);
+      if (!req) return;
+      Notifications.clearLastNotificationResponse();
+      if (req.help) startHelping(req.finder, req.finderName);
+      else useFindStore.getState().setIncoming(null);
+    };
+    const findResponses = Notifications.addNotificationResponseReceivedListener(onFindResponse);
+    // Launched by tapping the notification.
+    onFindResponse(Notifications.getLastNotificationResponse());
+
     // Meetup reminders follow the message list: new meetups (sent, received,
     // or loaded at launch) get one; my "Can't make it" drops it.
     const unsubReminders = useMessagesStore.subscribe((state, prev) => {
@@ -128,7 +178,6 @@ export default function App() {
     loadMyColor();
     loadCrewMembers();
     loadTags();
-    loadMyGoingPicks();
     useFestivalStore.getState().loadOverride();
     useCrewKeyStore.getState().load();
     // Re-pick the festival on the first phone GPS fix (location can narrow
@@ -151,6 +200,10 @@ export default function App() {
       unsubReminders();
       clearInterval(sosTimer);
       unsubSosWake();
+      clearInterval(findTimer);
+      unsubFindWake();
+      unsubFindRequests();
+      findResponses.remove();
       unsubFirstFix();
       stopPhoneGps();
     };
@@ -250,6 +303,13 @@ export default function App() {
   useEffect(() => {
     if (isLoading) return;
     const handle = (url: string | null) => {
+      // "Stop" on the Find me lock-screen activity: end my search and any
+      // sharing. (Plain rndvu://find just opens the app.)
+      if (url?.toLowerCase().startsWith('rndvu://find/stop')) {
+        cancelFind();
+        stopHelping();
+        return;
+      }
       if (!url || !url.toLowerCase().startsWith('rndvu://join')) return;
       if (!onboardingComplete) {
         Alert.alert('Set up first', "Finish connecting your radio, then choose Join with a QR and scan the invite again.");
@@ -279,6 +339,10 @@ export default function App() {
   }
 
   async function startPhoneGps() {
+    if (DEMO) {
+      useCrewStore.getState().setMyLocation(DEMO_LOCATION.lat, DEMO_LOCATION.lng, true);
+      return;
+    }
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') return;
 
@@ -303,6 +367,7 @@ export default function App() {
   function stopPhoneGps() {
     gpsSubRef.current?.remove();
     gpsSubRef.current = null;
+    useCrewStore.getState().releasePhoneLocation();
   }
 
   async function loadOnboardingStateAndReconnect() {
@@ -390,6 +455,7 @@ export default function App() {
               ConnectionBar and the header gear; self-controlled via the store. */}
           <DeviceScreen />
           <EndTripSheet />
+          <HelpFindSheet />
         </ErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>

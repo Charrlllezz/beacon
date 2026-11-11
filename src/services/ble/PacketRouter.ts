@@ -10,6 +10,7 @@ import { useScheduleStore } from '../../store/useScheduleStore';
 import { useTagStore } from '../../store/useTagStore';
 import { latLngFromI } from '../../utils/coordinates';
 import { positionTimestamp } from '../../utils/pinAge';
+import { receiveFind, receiveFindAnswer } from '../find/receive';
 
 const SEEN_PACKET_MAX = 1000;
 const seenPacketIds = new Set<number>();
@@ -85,9 +86,10 @@ export function routeFromRadio(fromRadio: FromRadio, myNodeNum: number | null): 
     useCrewStore.getState().upsertMember({
       nodeId: nodeInfo.num,
       // || not ?? — an empty-string name from an unconfigured peer must fall
-      // through to 'Unknown', otherwise the crew card renders blank.
-      longName: nodeInfo.user?.longName || 'Unknown',
-      shortName: nodeInfo.user?.shortName || '???',
+      // through (upsertMember keeps a known name, else 'Unknown'), otherwise
+      // the crew card renders blank. Passing 'Unknown' here overwrote names.
+      longName: nodeInfo.user?.longName || undefined,
+      shortName: nodeInfo.user?.shortName || undefined,
       lastHeard: nodeInfo.lastHeard,
       batteryLevel: nodeInfo.deviceMetrics?.batteryLevel,
       isSelf,
@@ -166,6 +168,21 @@ function routePacket(packet: MeshPacket, myNodeNum: number | null): void {
 
       if (message.type === 'color') {
         useCrewStore.getState().updateColor(packet.from, message.color);
+        break;
+      }
+
+      // Find me: never chat. A request or answer only matters to the one
+      // person it names; a live position just moves the sender's pin.
+      if (message.type === 'find') {
+        receiveFind(packet.from, fromName, message, myNodeNum);
+        break;
+      }
+      if (message.type === 'findAnswer') {
+        receiveFindAnswer(packet.from, message, myNodeNum);
+        break;
+      }
+      if (message.type === 'livePos') {
+        useCrewStore.getState().updateLocation(packet.from, message.lat, message.lng, positionTimestamp(undefined, packet.rxTime));
         break;
       }
 

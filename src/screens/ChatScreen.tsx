@@ -5,7 +5,8 @@ import {
   ScrollView, TextInput, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BorderRadius, FontSize, Colors, Spacing } from '../config/theme';
+import { BlurView } from 'expo-blur';
+import { BorderRadius, FontSize, Colors, Spacing, Fonts } from '../config/theme';
 import { useMessagesStore } from '../store/useMessagesStore';
 import { useDeviceStore } from '../store/useDeviceStore';
 import { useCrewStore } from '../store/useCrewStore';
@@ -17,6 +18,8 @@ import ConnectionBar from '../components/common/ConnectionBar';
 import RNDVUHeader from '../components/common/RNDVUHeader';
 import MapPinPicker from '../components/map/MapPinPicker';
 import ScrollPicker from '../components/common/ScrollPicker';
+import GradientButton from '../components/ui/GradientButton';
+import Icon from '../components/ui/Icon';
 import { bleService } from '../services/ble/BleManager';
 import { festivalConfig } from '../services/festival/FestivalConfig';
 import type { Message } from '../types/messages';
@@ -54,7 +57,6 @@ export default function ChatScreen() {
   const addMessage = useMessagesStore(s => s.addMessage);
   const status = useDeviceStore(s => s.status);
   const myNodeNum = useDeviceStore(s => s.myNodeNum);
-  const channelName = useDeviceStore(s => s.channelName);
   const myLocation = useCrewStore(s => s.myLocation);
   const crewMembers = useCrewStore(s => s.crewMembers);
   const flatListRef = useRef<FlatList>(null);
@@ -72,7 +74,6 @@ export default function ChatScreen() {
   const [showRallyPicker, setShowRallyPicker] = useState(false);
   const [showRallyMapPicker, setShowRallyMapPicker] = useState(false);
   const [rallyNote, setRallyNote] = useState('');
-  const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -99,12 +100,11 @@ export default function ChatScreen() {
   }, []);
 
   const sendRaw = useCallback(async (text: string) => {
-    if (!text.trim() || sending) return;
+    if (!text.trim()) return;
     if (!myNodeNum) {
       Alert.alert('Not Ready', 'Still connecting to your device — try again in a moment.');
       return;
     }
-    setSending(true);
     const msg = parseMessage(text, myNodeNum, myName, Date.now(), 0);
     if (msg.type === 'going') {
       useScheduleStore.getState().addGoingEntry({
@@ -116,20 +116,32 @@ export default function ChatScreen() {
       });
     }
 
+    // Sends queue in order (send.ts); no "already sending" guard, which
+    // silently dropped a second message typed during a slow write.
     const result = await sendCrewMessage(text);
-    setSending(false);
     if (!result.ok) {
       Alert.alert('Send Failed', 'Message could not be sent. Check your device connection.');
     }
     scrollToBottom();
     return result;
-  }, [myNodeNum, myName, sending]);
+  }, [myNodeNum, myName]);
+
+  // The text box clears only when the message was taken, so "Not Ready"
+  // doesn't also throw away what was typed.
+  const handleSendText = useCallback((text: string): boolean => {
+    if (!myNodeNum) {
+      Alert.alert('Not Ready', 'Still connecting to your device — try again in a moment.');
+      return false;
+    }
+    sendRaw(text);
+    return true;
+  }, [myNodeNum, sendRaw]);
 
   const sendHeading = useCallback(async (stageId: string) => {
-    await sendRaw(buildHeadingMessage(stageId));
+    const result = await sendRaw(buildHeadingMessage(stageId));
     setShowQuickActions(false);
     const stage = festivalConfig.getStage(stageId);
-    showToast(`Heading to ${stage?.shortName ?? stageId} sent`);
+    if (result?.ok) showToast(`Heading to ${stage?.shortName ?? stageId} sent`);
   }, [sendRaw, showToast]);
 
   const openRallyPicker = useCallback(() => {
@@ -140,8 +152,8 @@ export default function ChatScreen() {
 
   const sendRallyAtLocation = useCallback(async (lat: number, lng: number, note?: string) => {
     hapticMedium();
-    await sendRaw(buildRallyMessage(lat, lng, note || undefined));
-    showToast('Rally point sent');
+    const result = await sendRaw(buildRallyMessage(lat, lng, note || undefined));
+    if (result?.ok) showToast('Rally point sent');
   }, [sendRaw, showToast]);
 
   const sendSOS = useCallback(async () => {
@@ -243,7 +255,7 @@ export default function ChatScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <RNDVUHeader
-        title={channelName}
+        title="Chat"
         subtitle={onlineCount > 0 ? `${onlineCount} crew online` : undefined}
       />
       <ConnectionBar />
@@ -258,9 +270,11 @@ export default function ChatScreen() {
         keyboardVerticalOffset={0}
       >
         {messages.length === 0 ? (
-          <Pressable style={styles.flex} onPress={Keyboard.dismiss}>
+          <Pressable style={styles.flex} onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.emptyState}>
-              <Text style={styles.emptyEmoji}>👋</Text>
+              <View style={styles.emptyIcon}>
+                <Icon name="hand.wave.fill" size={34} color={Colors.primary} />
+              </View>
               <Text style={styles.emptyTitle}>Welcome to RNDVU!</Text>
               <Text style={styles.welcomeBody}>
                 Thanks for being here and giving us a shot — we really appreciate it! We built RNDVU to keep your crew connected when it matters most, no cell service or Wi-Fi needed.
@@ -298,7 +312,7 @@ export default function ChatScreen() {
         )}
 
         <ChatInput
-          onSend={sendRaw}
+          onSend={handleSendText}
           onQuickAction={() => setShowQuickActions(v => !v)}
           disabled={status !== 'connected'}
         />
@@ -307,8 +321,15 @@ export default function ChatScreen() {
       {/* Rally picker modal */}
       <Modal visible={showRallyPicker} transparent animationType="slide" onRequestClose={() => setShowRallyPicker(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <Pressable style={styles.meetupBackdrop} onPress={() => setShowRallyPicker(false)}>
-            <Pressable style={styles.meetupSheet} onPress={() => {}}>
+          <Pressable style={styles.meetupBackdrop} onPress={() => setShowRallyPicker(false)} accessible={false}>
+            <Pressable
+              style={styles.meetupSheet}
+              onPress={() => {}}
+              accessible={false}
+              accessibilityViewIsModal
+              onAccessibilityEscape={() => setShowRallyPicker(false)}
+            >
+              <SheetBackground />
               <View style={styles.meetupHandle} />
               <Text style={styles.meetupTitle}>Rally Point</Text>
 
@@ -324,32 +345,38 @@ export default function ChatScreen() {
                 autoFocus
               />
 
+              <GradientButton
+                label="My Location"
+                icon="location.fill"
+                style={styles.rallyPrimary}
+                onPress={() => {
+                  if (!myLocation) {
+                    Alert.alert('No Location', "Your location isn't available yet.");
+                    return;
+                  }
+                  sendRallyAtLocation(myLocation.lat, myLocation.lng, rallyNote || undefined);
+                  setShowRallyPicker(false);
+                }}
+              />
               <View style={styles.rallyActions}>
-                <TouchableOpacity style={styles.meetupCancel} onPress={() => setShowRallyPicker(false)}>
-                  <Text style={styles.meetupCancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.rallyBtn}
-                  onPress={() => {
-                    if (!myLocation) {
-                      Alert.alert('No Location', "Your location isn't available yet.");
-                      return;
-                    }
-                    sendRallyAtLocation(myLocation.lat, myLocation.lng, rallyNote || undefined);
-                    setShowRallyPicker(false);
-                  }}
-                >
-                  <Text style={styles.rallyBtnText}>My Location</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.rallyPinBtn}
+                <GradientButton
+                  label="Cancel"
+                  variant="ghost"
+                  compact
+                  style={styles.flex}
+                  onPress={() => setShowRallyPicker(false)}
+                />
+                <GradientButton
+                  label="Drop Pin"
+                  icon="mappin"
+                  variant="ghost"
+                  compact
+                  style={styles.flex}
                   onPress={() => {
                     setShowRallyPicker(false);
                     setTimeout(() => setShowRallyMapPicker(true), 350);
                   }}
-                >
-                  <Text style={styles.rallyPinBtnText}>Drop Pin</Text>
-                </TouchableOpacity>
+                />
               </View>
             </Pressable>
           </Pressable>
@@ -371,8 +398,17 @@ export default function ChatScreen() {
       {/* Meetup picker modal */}
       <Modal visible={showMeetupPicker} transparent animationType="slide" onRequestClose={() => setShowMeetupPicker(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <Pressable style={styles.meetupBackdrop} onPress={() => setShowMeetupPicker(false)}>
-            <Pressable style={styles.meetupSheet} onPress={() => {}}>
+          {/* accessible={false}: a Pressable is one VoiceOver element by default,
+              which hid every control in the sheet. */}
+          <Pressable style={styles.meetupBackdrop} onPress={() => setShowMeetupPicker(false)} accessible={false}>
+            <Pressable
+              style={styles.meetupSheet}
+              onPress={() => {}}
+              accessible={false}
+              accessibilityViewIsModal
+              onAccessibilityEscape={() => setShowMeetupPicker(false)}
+            >
+            <SheetBackground />
             <View style={styles.meetupHandle} />
             <Text style={styles.meetupTitle}>Set a Meetup</Text>
 
@@ -454,7 +490,7 @@ export default function ChatScreen() {
 
             {meetupLocationMode === 'pin' && (
               <TouchableOpacity style={styles.pinInfo} onPress={handleOpenMeetupMap}>
-                <Text style={styles.pinEmoji}>📍</Text>
+                <Icon name="mappin.circle.fill" size={26} color={Colors.primary} />
                 <Text style={styles.pinText}>
                   {meetupPinCoord
                     ? `Pin dropped\n${meetupPinCoord.lat.toFixed(4)}, ${meetupPinCoord.lng.toFixed(4)}`
@@ -476,12 +512,8 @@ export default function ChatScreen() {
             />
 
             <View style={styles.meetupActions}>
-              <TouchableOpacity style={styles.meetupCancel} onPress={() => setShowMeetupPicker(false)}>
-                <Text style={styles.meetupCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.meetupSend} onPress={sendMeetup}>
-                <Text style={styles.meetupSendText}>Send Meetup</Text>
-              </TouchableOpacity>
+              <GradientButton label="Cancel" variant="ghost" style={styles.flex} onPress={() => setShowMeetupPicker(false)} />
+              <GradientButton label="Send Meetup" icon="paperplane.fill" style={styles.flex} onPress={sendMeetup} />
             </View>
             </Pressable>
           </Pressable>
@@ -500,6 +532,16 @@ export default function ChatScreen() {
   );
 }
 
+// Soft glass behind the bottom sheets.
+function SheetBackground() {
+  return (
+    <>
+      <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: Colors.glass }]} />
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   flex: { flex: 1 },
@@ -511,6 +553,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   toastText: {
+    fontFamily: Fonts.rounded,
     color: Colors.success,
     fontSize: FontSize.xs,
     fontWeight: '700',
@@ -526,8 +569,12 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     paddingTop: Spacing.xl,
   },
-  emptyEmoji: { fontSize: 48, marginBottom: Spacing.md },
+  emptyIcon: {
+    width: 72, height: 72, borderRadius: 24, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.primary + '1c', marginBottom: Spacing.md,
+  },
   emptyTitle: {
+    fontFamily: Fonts.rounded,
     color: Colors.textPrimary,
     fontSize: 22,
     fontWeight: '800',
@@ -545,27 +592,30 @@ const styles = StyleSheet.create({
   meetupBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: Colors.overlay,
   },
   meetupSheet: {
-    backgroundColor: Colors.surfaceElevated,
+    overflow: 'hidden',
     borderTopLeftRadius: BorderRadius.xl,
     borderTopRightRadius: BorderRadius.xl,
     padding: Spacing.lg,
     paddingBottom: 40,
-    borderTopWidth: 1,
-    borderColor: Colors.warning + '33',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
   },
   meetupHandle: {
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: Colors.textMuted,
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
     alignSelf: 'center',
     marginBottom: Spacing.md,
   },
   meetupTitle: {
-    fontSize: FontSize.lg,
+    fontFamily: Fonts.rounded,
+    fontSize: FontSize.xl,
     fontWeight: '800',
     color: Colors.textPrimary,
     marginBottom: Spacing.md,
@@ -587,7 +637,7 @@ const styles = StyleSheet.create({
   timeColon: {
     fontSize: 28,
     fontWeight: '800',
-    color: Colors.warning,
+    color: Colors.primary,
     marginHorizontal: 2,
     marginBottom: 2,
   },
@@ -601,16 +651,16 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: BorderRadius.sm,
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderWidth: 1,
     borderColor: Colors.border,
   },
   locationModeTabActive: {
-    borderColor: Colors.warning,
-    backgroundColor: Colors.warning + '18',
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '1c',
   },
-  locationModeText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '600' },
-  locationModeTextActive: { color: Colors.warning },
+  locationModeText: { fontFamily: Fonts.rounded, color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '700' },
+  locationModeTextActive: { color: Colors.primary },
   locationRow: { gap: 8 },
   locationChip: {
     paddingVertical: 8,
@@ -618,11 +668,11 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     borderWidth: 1,
     borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
-  locationChipText: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '700' },
+  locationChipText: { fontFamily: Fonts.rounded, color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: '700' },
   meetupTextInput: {
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     color: Colors.textPrimary,
@@ -633,58 +683,24 @@ const styles = StyleSheet.create({
   pinInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     gap: Spacing.sm,
     borderWidth: 1,
     borderColor: Colors.primary + '44',
   },
-  pinEmoji: { fontSize: 24 },
   pinText: { color: Colors.textSecondary, fontSize: FontSize.sm, flex: 1 },
   pinEditText: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '600' },
+  rallyPrimary: { marginTop: Spacing.lg },
   rallyActions: {
     flexDirection: 'row',
     gap: Spacing.sm,
-    marginTop: Spacing.lg,
+    marginTop: Spacing.sm,
   },
-  rallyBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-  },
-  rallyBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
-  rallyPinBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.primary,
-  },
-  rallyPinBtnText: { color: Colors.primary, fontSize: FontSize.md, fontWeight: '700' },
   meetupActions: {
     flexDirection: 'row',
     gap: Spacing.sm,
     marginTop: Spacing.lg,
   },
-  meetupCancel: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  meetupCancelText: { color: Colors.textSecondary, fontSize: FontSize.md, fontWeight: '600' },
-  meetupSend: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    backgroundColor: Colors.warning,
-  },
-  meetupSendText: { color: '#000', fontSize: FontSize.md, fontWeight: '700' },
 });

@@ -94,3 +94,21 @@ describe('activeSosFromOthers', () => {
     expect(open.map(t => t.root.id)).toEqual(['sos']);
   });
 });
+
+describe('failed sends', () => {
+  test("a failed I'm coming or safe doesn't count", () => {
+    const t = sosThread([
+      root,
+      msg({ type: 'reply', kind: 'coming', replyTo: 500, fromNodeId: ME, fromName: 'Me', sendStatus: 'failed' }),
+      msg({ type: 'reply', kind: 'safe', replyTo: 500, sendStatus: 'failed' }),
+    ], root);
+    expect(t.coming).toEqual([]);
+    expect(t.ended).toBe(false);
+  });
+
+  test('a failed first alert is not a card of its own', () => {
+    const failed = msg({ type: 'sos', lat: 34, lng: -117, fromNodeId: ME, sendStatus: 'failed' });
+    const sent = msg({ type: 'sos', lat: 34, lng: -117, fromNodeId: ME, packetId: 777, sendStatus: 'sent' });
+    expect(sosHeads([failed, sent]).map(h => h.id)).toEqual([sent.id]);
+  });
+});

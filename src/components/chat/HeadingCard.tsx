@@ -1,9 +1,12 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
 import type { HeadingMessage } from '../../types/messages';
 import { festivalConfig } from '../../services/festival/FestivalConfig';
 import { timeAgo } from '../../utils/time';
+import { glassCard } from '../ui/Glass';
+import CardIcon from './CardIcon';
+import { useSenderColor } from './useSenderColor';
 
 interface Props {
   message: HeadingMessage;
@@ -15,13 +18,14 @@ export default function HeadingCard({ message, isMine }: Props) {
   const nowPlaying = stage ? festivalConfig.getNowPlaying(message.stageId) : undefined;
   const stageName = stage?.name ?? message.stageId;
   const stageColor = stage?.color ?? Colors.primary;
+  const senderColor = useSenderColor(message.fromNodeId);
 
   return (
     <View style={[styles.row, isMine && styles.rowMine]}>
-      <View style={[styles.card, { borderLeftColor: stageColor }]}>
-        {!isMine && <Text style={styles.sender}>{message.fromName}</Text>}
+      <View style={styles.card}>
+        {!isMine && <Text style={[styles.sender, { color: senderColor }]}>{message.fromName}</Text>}
         <View style={styles.header}>
-          <Text style={styles.emoji}>🎵</Text>
+          <CardIcon name="figure.walk" color={stageColor} />
           <View style={styles.headerText}>
             <Text style={styles.action}>Heading to</Text>
             <Text style={[styles.stageName, { color: stageColor }]}>{stageName}</Text>
@@ -44,25 +48,20 @@ const styles = StyleSheet.create({
   row: { marginVertical: 4, alignItems: 'flex-start' },
   rowMine: { alignItems: 'flex-end' },
   card: {
-    maxWidth: '82%',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
-    borderLeftWidth: 3,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: '#1e1d2a',
+    ...glassCard,
+    maxWidth: '84%',
+    padding: 14,
   },
   sender: {
+    fontFamily: Fonts.rounded,
     fontSize: FontSize.xs,
     fontWeight: '700',
-    color: Colors.primary,
-    marginBottom: 6,
+    marginBottom: 8,
   },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  emoji: { fontSize: 28 },
   headerText: { flex: 1 },
   action: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: '600' },
-  stageName: { fontSize: FontSize.lg, fontWeight: '800', marginTop: 1 },
+  stageName: { fontFamily: Fonts.rounded, fontSize: FontSize.lg, fontWeight: '800', marginTop: 1 },
   nowPlaying: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -70,7 +69,8 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: Colors.success + '11',
     borderRadius: BorderRadius.sm,
-    padding: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   liveDot: {
     width: 7,

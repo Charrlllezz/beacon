@@ -35,4 +35,10 @@ license. Check the current Apple and US export-control guidance at that point.
 
 Short answer: "RNDVU configures a separate LoRa radio over Bluetooth. Message
 encryption happens in the radio's open-source Meshtastic firmware, not in the
-app. The app uses only encryption provided by iOS (HTTPS, Bluetooth)."
+app. The app uses only encryption provided by iOS (HTTPS, Bluetooth, and the
+Multipeer Connectivity link used to start Ultra Wideband finding)."
+
+Precise finding (Ultra Wideband) asks iOS's Multipeer Connectivity for an
+encrypted phone-to-phone link (`encryptionPreference: .required`) to swap the
+Nearby Interaction tokens. That's encryption provided by the operating system,
+like HTTPS, so the answer above doesn't change.

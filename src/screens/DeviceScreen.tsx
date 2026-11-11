@@ -4,7 +4,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../config/theme';
+import Icon from '../components/ui/Icon';
+import GradientButton from '../components/ui/GradientButton';
+import { glassCard } from '../components/ui/Glass';
 import { useDeviceStore } from '../store/useDeviceStore';
 import { useCrewStore } from '../store/useCrewStore';
 import { bleService } from '../services/ble/BleManager';
@@ -264,11 +267,13 @@ export default function DeviceScreen() {
 
           {/* Reconnect (only when not connected) */}
           {!isConnected && (
-            <TouchableOpacity style={styles.primaryBtn} onPress={handleReconnect} disabled={busy} activeOpacity={0.8}>
-              {busy
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.primaryBtnText}>Reconnect</Text>}
-            </TouchableOpacity>
+            <GradientButton
+              label={busy ? 'Reconnecting…' : 'Reconnect'}
+              icon="arrow.clockwise"
+              onPress={handleReconnect}
+              disabled={busy}
+              style={styles.primaryBtn}
+            />
           )}
 
           <Text style={styles.sectionTitle}>FESTIVAL</Text>
@@ -277,7 +282,7 @@ export default function DeviceScreen() {
               style={styles.festivalRow}
               onPress={() => useFestivalStore.getState().setOverride(null)}
             >
-              <Text style={styles.radio}>{festivalOverride === null ? '●' : '○'}</Text>
+              <Icon name={festivalOverride === null ? 'checkmark.circle.fill' : 'circle'} size={20} color={festivalOverride === null ? Colors.primary : Colors.textMuted} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.festivalName}>Automatic</Text>
                 <Text style={styles.actionSub}>
@@ -292,7 +297,7 @@ export default function DeviceScreen() {
                 style={styles.festivalRow}
                 onPress={() => useFestivalStore.getState().setOverride(c.festival.id)}
               >
-                <Text style={styles.radio}>{festivalOverride === c.festival.id ? '●' : '○'}</Text>
+                <Icon name={festivalOverride === c.festival.id ? 'checkmark.circle.fill' : 'circle'} size={20} color={festivalOverride === c.festival.id ? Colors.primary : Colors.textMuted} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.festivalName}>{c.festival.name}</Text>
                   <Text style={styles.actionSub}>
@@ -331,7 +336,10 @@ export default function DeviceScreen() {
           <Text style={styles.sectionTitle}>TROUBLESHOOTING</Text>
 
           <TouchableOpacity style={styles.action} onPress={handleReprovision}>
-            <Text style={styles.actionTitle}>{regionBad || sharingOff || keyMismatch ? '⚠ Re-provision Device' : 'Re-provision Device'}</Text>
+            <View style={styles.actionTitleRow}>
+              {(regionBad || sharingOff || keyMismatch) && <Icon name="exclamationmark.triangle.fill" size={15} color={Colors.warning} />}
+              <Text style={styles.actionTitle}>Re-provision Device</Text>
+            </View>
             <Text style={styles.actionSub}>Re-apply the RNDVU channel, key, US region, and your name. Fixes an UNSET region, location sharing off, or a wrong channel/key — no factory reset or re-pair needed.</Text>
           </TouchableOpacity>
 
@@ -421,64 +429,53 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e1d2a',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
   },
-  headerTitle: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.textPrimary },
-  close: { fontSize: FontSize.md, fontWeight: '700', color: Colors.primary },
+  headerTitle: { fontFamily: Fonts.rounded, fontSize: FontSize.xl, fontWeight: '800', color: Colors.textPrimary },
+  close: { fontFamily: Fonts.rounded, fontSize: FontSize.md, fontWeight: '700', color: Colors.primary },
   content: { padding: Spacing.md, paddingBottom: Spacing.xl },
   statusCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    ...glassCard,
     padding: Spacing.md,
   },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  statusDot: { width: 12, height: 12, borderRadius: 6 },
-  statusLabel: { fontSize: FontSize.lg, fontWeight: '800' },
+  statusDot: { width: 10, height: 10, borderRadius: 5 },
+  statusLabel: { fontFamily: Fonts.rounded, fontSize: FontSize.xl, fontWeight: '800' },
   statusHint: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4, marginBottom: Spacing.sm },
   kv: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
   k: { fontSize: FontSize.sm, color: Colors.textSecondary },
   v: { fontSize: FontSize.sm, color: Colors.textPrimary, fontWeight: '600' },
   vMono: { fontSize: FontSize.sm, color: Colors.textPrimary, fontFamily: 'monospace' },
   primaryBtn: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    paddingVertical: 14,
-    alignItems: 'center',
     marginTop: Spacing.md,
   },
-  primaryBtnText: { color: '#fff', fontSize: FontSize.md, fontWeight: '800' },
   sectionTitle: {
+    fontFamily: Fonts.rounded,
     fontSize: FontSize.xs,
     fontWeight: '700',
-    color: Colors.textMuted,
-    letterSpacing: 0.5,
+    color: Colors.textSecondary,
+    letterSpacing: 1,
     marginTop: Spacing.lg,
     marginBottom: Spacing.sm,
   },
   action: {
-    backgroundColor: Colors.surface,
+    ...glassCard,
     borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
     padding: Spacing.md,
     marginBottom: Spacing.sm,
   },
-  danger: { borderColor: Colors.error + '44' },
-  actionTitle: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textPrimary },
+  danger: { borderColor: 'rgba(255, 90, 95, 0.35)' },
+  actionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  actionTitle: { fontFamily: Fonts.rounded, fontSize: FontSize.md, fontWeight: '700', color: Colors.textPrimary },
   actionSub: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 3 },
-  offlineRow: { marginTop: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: Spacing.sm },
+  offlineRow: { marginTop: Spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.border, paddingTop: Spacing.sm },
   retry: { fontSize: FontSize.sm, fontWeight: '700', color: Colors.primary, paddingVertical: 4 },
   festivalRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-  radio: { fontSize: FontSize.md, color: Colors.primary, width: 18 },
-  festivalName: { fontSize: FontSize.md, fontWeight: '700', color: Colors.textPrimary },
+  festivalName: { fontFamily: Fonts.rounded, fontSize: FontSize.md, fontWeight: '700', color: Colors.textPrimary },
   diag: {
-    backgroundColor: Colors.surface,
+    ...glassCard,
     borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
     padding: Spacing.md,
   },
 });

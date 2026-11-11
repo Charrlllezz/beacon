@@ -36,7 +36,7 @@ const WINDOW_TRAIL_MS = 12 * 3600 * 1000;
 const PROMPT_AFTER_MS = 6 * 3600 * 1000;
 const PROMPT_FOR_MS = 14 * 24 * 3600 * 1000;
 
-const AMBIENT: ReadonlySet<Message['type']> = new Set(['color', 'ungoing', 'going', 'tag', 'heading']);
+const AMBIENT: ReadonlySet<Message['type']> = new Set(['color', 'ungoing', 'going', 'tag', 'heading', 'find', 'findAnswer', 'livePos']);
 
 export function festivalWindow(c: FestivalConfig): { start: number; end: number } {
   return {
@@ -48,6 +48,18 @@ export function festivalWindow(c: FestivalConfig): { start: number; end: number 
 export function shouldOfferDebrief(c: FestivalConfig, nowMs: number): boolean {
   const end = new Date(c.festival.dates.end).getTime();
   return nowMs >= end + PROMPT_AFTER_MS && nowMs < end + PROMPT_FOR_MS;
+}
+
+/**
+ * Which festival a debrief is about: the latest one that has begun. Not the
+ * active festival: Countdown and Beyond Wonderland share a venue, and once
+ * Countdown's window closes (Jan 2) the app switches to BW, which hid the
+ * Countdown prompt and saved its debrief under BW's id.
+ */
+export function debriefTarget(configs: FestivalConfig[], nowMs: number): FestivalConfig | null {
+  const begun = configs.filter(c => festivalWindow(c).start <= nowMs);
+  if (begun.length === 0) return null;
+  return begun.reduce((a, b) => (festivalWindow(b).start > festivalWindow(a).start ? b : a));
 }
 
 export function debriefStats(

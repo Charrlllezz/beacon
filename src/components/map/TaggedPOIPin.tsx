@@ -1,17 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Marker } from 'react-native-maps';
-import { Colors, FontSize, BorderRadius } from '../../config/theme';
-import type { TaggedPOI, TagCategory } from '../../types/festival';
-
-const CATEGORY_ICONS: Record<TagCategory, string> = {
-  stage: '🎵',
-  food: '🍔',
-  water: '💧',
-  restroom: '🚻',
-  camp: '⛺',
-  custom: '📌',
-};
+import { Colors, FontSize, BorderRadius, Fonts } from '../../config/theme';
+import Icon from '../ui/Icon';
+import type { TaggedPOI } from '../../types/festival';
+import { TAG_CATEGORY_ICONS as CATEGORY_ICONS } from './tagCategories';
 
 interface Props {
   poi: TaggedPOI;
@@ -19,7 +12,7 @@ interface Props {
 }
 
 export default function TaggedPOIPin({ poi, onPress }: Props) {
-  const icon = CATEGORY_ICONS[poi.category] || '📌';
+  const icon = CATEGORY_ICONS[poi.category] ?? 'mappin';
 
   return (
     <Marker
@@ -29,7 +22,7 @@ export default function TaggedPOIPin({ poi, onPress }: Props) {
     >
       <View style={styles.container}>
         <View style={styles.pin}>
-          <Text style={styles.icon}>{icon}</Text>
+          <Icon name={icon} size={14} color={Colors.primary} weight="semibold" />
         </View>
         <Text style={styles.label} numberOfLines={1}>{poi.name}</Text>
       </View>
@@ -46,21 +39,25 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceElevated,
     borderWidth: 1.5,
     borderColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
   },
-  icon: { fontSize: 14 },
   label: {
-    fontSize: 9,
+    fontFamily: Fonts.rounded,
+    fontSize: 10,
     fontWeight: '700',
     color: Colors.textPrimary,
-    backgroundColor: Colors.surface + 'cc',
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 3,
+    backgroundColor: 'rgba(11, 10, 16, 0.78)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
     marginTop: 2,
     overflow: 'hidden',
   },

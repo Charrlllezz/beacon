@@ -2,7 +2,8 @@ import React, { useRef } from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
+import GradientButton from '../ui/GradientButton';
 
 interface Props {
   visible: boolean;
@@ -30,12 +31,11 @@ export default function QrScanner({ visible, onScanned, onCancel }: Props) {
         {!permission ? null : !permission.granted ? (
           <View style={styles.center}>
             <Text style={styles.body}>RNDVU needs the camera to scan your crew's QR code.</Text>
-            <TouchableOpacity
-              style={styles.btn}
+            <GradientButton
+              label={permission.canAskAgain ? 'Allow camera' : 'Open Settings'}
+              icon="camera"
               onPress={() => (permission.canAskAgain ? requestPermission() : Linking.openSettings())}
-            >
-              <Text style={styles.btnText}>{permission.canAskAgain ? 'Allow camera' : 'Open Settings'}</Text>
-            </TouchableOpacity>
+            />
           </View>
         ) : (
           <View style={styles.cameraWrap}>
@@ -64,14 +64,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.md,
   },
-  title: { color: '#fff', fontSize: FontSize.lg, fontWeight: '800' },
-  close: { color: Colors.primary, fontSize: FontSize.md, fontWeight: '700' },
+  title: { fontFamily: Fonts.rounded, color: '#fff', fontSize: FontSize.xl, fontWeight: '800' },
+  close: { fontFamily: Fonts.rounded, color: Colors.primary, fontSize: FontSize.md, fontWeight: '700' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, gap: Spacing.md },
   body: { color: Colors.textPrimary, fontSize: FontSize.md, textAlign: 'center' },
-  btn: { backgroundColor: Colors.primary, borderRadius: BorderRadius.full, paddingVertical: 12, paddingHorizontal: Spacing.lg },
-  btnText: { color: '#fff', fontWeight: '800', fontSize: FontSize.md },
   cameraWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  frame: { width: 240, height: 240, borderWidth: 3, borderColor: '#fff', borderRadius: BorderRadius.lg },
+  frame: { width: 240, height: 240, borderWidth: 3, borderColor: Colors.primary, borderRadius: BorderRadius.xl },
   hint: {
     position: 'absolute', bottom: Spacing.xl, left: Spacing.lg, right: Spacing.lg,
     color: '#fff', textAlign: 'center', fontSize: FontSize.sm, fontWeight: '600',

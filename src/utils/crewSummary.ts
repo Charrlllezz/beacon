@@ -1,11 +1,10 @@
 import type { CrewMember } from '../types/crew';
+import { IN_RANGE_SECS } from './time';
 
 // "Is my crew OK?" in one line, for the strip at the top of every tab.
 
-// A radio that's still around sends something at least every ~15 minutes
-// (position) and every 30 minutes (battery). Not heard for 30 minutes means
-// out of range, off, or flat.
-export const IN_RANGE_SECS = 30 * 60;
+// "In range" is the app-wide cutoff in time.ts.
+export { IN_RANGE_SECS };
 export const LOW_BATTERY = 15;
 
 export interface CrewSummary {

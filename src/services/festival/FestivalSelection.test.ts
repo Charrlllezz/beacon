@@ -118,3 +118,16 @@ describe('bundled configs', () => {
     expect(n).toBeLessThan(2746);
   });
 });
+
+describe('bundled lineups', () => {
+  // A set on a night the config's dates don't cover has no day tab and
+  // silently never shows. Catches a lineup added without widening dates.
+  test.each(BUNDLED_FESTIVALS.map(c => [c.festival.id, c] as const))('%s: every set lands on a day tab', (_id, c) => {
+    const tabs = new Set(festivalDays(c).map(d => d.key));
+    for (const stage of c.stages) {
+      for (const slot of stage.schedule) {
+        expect(tabs, `${stage.id} / ${slot.artistName} at ${slot.start}`).toContain(festivalDayKey(slot.start, c.festival.timezone));
+      }
+    }
+  });
+});

@@ -1,8 +1,11 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
-import MapView, { PROVIDER_DEFAULT, Region } from 'react-native-maps';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import MapView, { PROVIDER_DEFAULT, Region, UrlTile } from 'react-native-maps';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
+import Icon from '../ui/Icon';
 import { useCrewStore } from '../../store/useCrewStore';
+import { festivalConfig } from '../../services/festival/FestivalConfig';
+import { getTilePath } from '../../services/map/TilePrefetch';
 
 interface Props {
   visible: boolean;
@@ -14,24 +17,24 @@ interface Props {
 
 export default function MapPinPicker({ visible, initialCoord, onConfirm, onCancel, title = 'Drop a Pin' }: Props) {
   const mapRef = useRef<MapView>(null);
-  const myLocation = useCrewStore(s => s.myLocation);
-  const fallback = myLocation
-    ? { latitude: myLocation.lat, longitude: myLocation.lng }
-    : { latitude: 33.6803, longitude: -116.2378 };
-  const [center, setCenter] = useState<{ latitude: number; longitude: number }>(
-    initialCoord ?? fallback
-  );
+  const [center, setCenter] = useState<{ latitude: number; longitude: number } | null>(null);
 
-  // Reset pin when modal opens with new initial coord
+  // Start point, worked out once each time the picker opens. Only on open:
+  // callers pass a fresh initialCoord object every render, and re-running on
+  // that reset the pin to your GPS position whenever a message arrived, while
+  // the map stayed where you'd dragged it, so Confirm sent the wrong spot.
   React.useEffect(() => {
-    if (visible && initialCoord) {
-      setCenter(initialCoord);
-    } else if (visible) {
-      setCenter(myLocation ? { latitude: myLocation.lat, longitude: myLocation.lng } : fallback);
-    }
-  }, [visible, initialCoord]);
+    if (!visible) { setCenter(null); return; }
+    const me = useCrewStore.getState().myLocation;
+    const venue = festivalConfig.getConfig().venue.center;
+    setCenter(initialCoord ?? (me ? { latitude: me.lat, longitude: me.lng } : { latitude: venue.lat, longitude: venue.lng }));
+  }, [visible]);
 
-  const region: Region = {
+  // Same rule as the Map tab: at the venue, serve tiles from the cache only.
+  const venue = festivalConfig.getConfig().venue.center;
+  const nearVenue = !!center && Math.abs(center.latitude - venue.lat) < 0.05 && Math.abs(center.longitude - venue.lng) < 0.05;
+
+  const region: Region | null = center && {
     latitude: center.latitude,
     longitude: center.longitude,
     latitudeDelta: 0.006,
@@ -50,34 +53,51 @@ export default function MapPinPicker({ visible, initialCoord, onConfirm, onCance
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
           <Text style={styles.title}>{title}</Text>
-          <TouchableOpacity onPress={() => onConfirm(center)}>
+          <TouchableOpacity onPress={() => center && onConfirm(center)}>
             <Text style={styles.confirmText}>Confirm</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.hint}>Move the map to place your pin</Text>
         <View style={styles.mapContainer}>
-          <MapView
-            ref={mapRef}
-            style={styles.map}
-            provider={PROVIDER_DEFAULT}
-            mapType="standard"
-            initialRegion={region}
-            onRegionChangeComplete={handleRegionChangeComplete}
-            showsUserLocation
-            showsMyLocationButton={false}
-            showsCompass={false}
-            rotateEnabled={false}
-          />
+          {/* Mounted once the start point is known, so initialRegion is right
+              on every open. */}
+          {region && (
+            <MapView
+              ref={mapRef}
+              style={styles.map}
+              provider={PROVIDER_DEFAULT}
+              mapType="standard"
+              initialRegion={region}
+              onRegionChangeComplete={handleRegionChangeComplete}
+              showsUserLocation
+              showsMyLocationButton={false}
+              showsCompass={false}
+              rotateEnabled={false}
+            >
+              {/* The venue tiles the Map tab downloaded, so pins aren't
+                  dropped onto a blank grid with no signal. */}
+              <UrlTile
+                urlTemplate="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                maximumZ={20}
+                maximumNativeZ={18}
+                minimumZ={14}
+                tileCachePath={getTilePath()}
+                offlineMode={nearVenue}
+                tileSize={256}
+                zIndex={-1}
+              />
+            </MapView>
+          )}
 
           {/* Fixed center pin overlay */}
           <View style={styles.centerPinWrapper} pointerEvents="none">
-            <Text style={styles.centerPinIcon}>📍</Text>
+            <View style={styles.centerPinIcon}><Icon name="mappin.circle.fill" size={40} color={Colors.primary} /></View>
             <View style={styles.centerPinShadow} />
           </View>
         </View>
         <View style={styles.coordBar}>
           <Text style={styles.coordText}>
-            {center.latitude.toFixed(5)}, {center.longitude.toFixed(5)}
+            {center ? `${center.latitude.toFixed(5)}, ${center.longitude.toFixed(5)}` : ''}
           </Text>
         </View>
       </View>
@@ -108,7 +128,8 @@ const styles = StyleSheet.create({
   },
   title: {
     color: Colors.textPrimary,
-    fontSize: FontSize.md,
+    fontFamily: Fonts.rounded,
+    fontSize: FontSize.md + 1,
     fontWeight: '700',
   },
   confirmText: {
@@ -139,8 +160,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   centerPinIcon: {
-    fontSize: 40,
     marginTop: -40,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 5,
   },
   centerPinShadow: {
     width: 6,
@@ -160,6 +184,6 @@ const styles = StyleSheet.create({
   coordText: {
     color: Colors.textSecondary,
     fontSize: FontSize.sm,
-    fontFamily: 'monospace',
+    fontFamily: 'ui-monospace',
   },
 });

@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
 import type { MeetupMessage } from '../../types/messages';
 import { festivalConfig } from '../../services/festival/FestivalConfig';
 import { timeAgo } from '../../utils/time';
 import { getMeetupDate } from '../../utils/meetupTime';
+import { glassCard } from '../ui/Glass';
+import CardIcon from './CardIcon';
 import ReplyBar from './ReplyBar';
+import { useSenderColor } from './useSenderColor';
 
 interface Props {
   message: MeetupMessage;
@@ -31,6 +34,7 @@ function formatCountdown(ms: number): string {
 
 export default function MeetupCard({ message, isMine }: Props) {
   const [now, setNow] = useState(Date.now());
+  const senderColor = useSenderColor(message.fromNodeId);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 30000);
@@ -50,15 +54,15 @@ export default function MeetupCard({ message, isMine }: Props) {
   return (
     <View style={[styles.row, isMine && styles.rowMine]}>
       <View style={[styles.card, isPast && styles.cardPast]}>
-        {!isMine && <Text style={styles.sender}>{message.fromName}</Text>}
+        {!isMine && <Text style={[styles.sender, { color: senderColor }]}>{message.fromName}</Text>}
         <View style={styles.header}>
-          <Text style={styles.emoji}>📍</Text>
+          <CardIcon name="clock.fill" sunset={!isPast} color={Colors.success} />
           <View style={styles.headerText}>
             <Text style={styles.action}>Meetup</Text>
-            <Text style={styles.location}>{locationLabel}</Text>
+            <Text style={styles.location} numberOfLines={2}>{locationLabel}</Text>
           </View>
-          <View style={styles.timeBadge}>
-            <Text style={styles.timeText}>{timeStr}</Text>
+          <View style={[styles.timeBadge, isPast && styles.timeBadgePast]}>
+            <Text style={[styles.timeText, isPast && styles.timeTextPast]}>{timeStr}</Text>
           </View>
         </View>
         <View style={styles.countdownRow}>
@@ -82,57 +86,55 @@ export default function MeetupCard({ message, isMine }: Props) {
 const styles = StyleSheet.create({
   row: { marginVertical: 4, alignItems: 'flex-start' },
   rowMine: { alignItems: 'flex-end' },
+  // A set width, not only maxWidth: sized from its content, the header row
+  // squeezed the title, and a two-word stage name ("Sahara Tent") ran on
+  // under the time badge, leaving a stray mark after "Sahara".
   card: {
-    maxWidth: '82%',
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius.lg,
-    borderLeftWidth: 3,
-    borderLeftColor: Colors.primary,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.primary + '44',
+    ...glassCard,
+    width: '84%',
+    padding: 14,
   },
   cardPast: {
-    borderColor: Colors.success + '44',
-    borderLeftColor: Colors.success,
+    borderColor: Colors.success + '55',
   },
   sender: {
+    fontFamily: Fonts.rounded,
     fontSize: FontSize.xs,
     fontWeight: '700',
-    color: Colors.primary,
-    marginBottom: 6,
+    marginBottom: 8,
   },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  emoji: { fontSize: 28 },
-  headerText: { flex: 1 },
+  headerText: { flex: 1, minWidth: 0 },
   action: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: '600' },
-  location: { fontSize: FontSize.lg, fontWeight: '800', color: Colors.textPrimary, marginTop: 1 },
+  location: { fontFamily: Fonts.rounded, fontSize: FontSize.lg, fontWeight: '800', color: Colors.textPrimary, marginTop: 1 },
   timeBadge: {
     backgroundColor: Colors.primary + '22',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: BorderRadius.full,
   },
-  timeText: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '800', fontFamily: 'monospace' },
+  timeBadgePast: { backgroundColor: Colors.success + '22' },
+  timeText: { fontFamily: Fonts.rounded, color: Colors.primary, fontSize: FontSize.sm, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  timeTextPast: { color: Colors.success },
   countdownRow: {
-    marginTop: 8,
-    backgroundColor: Colors.surfaceElevated,
+    marginTop: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: BorderRadius.sm,
-    padding: 6,
+    paddingVertical: 7,
     alignItems: 'center',
   },
-  countdown: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: '700' },
+  countdown: { fontFamily: Fonts.rounded, color: Colors.primary, fontSize: FontSize.md, fontWeight: '700', fontVariant: ['tabular-nums'] },
   countdownPast: { color: Colors.success },
   coords: {
     fontSize: FontSize.xs,
     color: Colors.textMuted,
-    fontFamily: 'monospace',
+    fontVariant: ['tabular-nums'],
     marginTop: 6,
   },
   note: {
     fontSize: FontSize.sm,
     color: Colors.textSecondary,
-    marginTop: 8,
+    marginTop: 10,
   },
-  timestamp: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 8, alignSelf: 'flex-end' },
+  timestamp: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: Spacing.sm, alignSelf: 'flex-end' },
 });

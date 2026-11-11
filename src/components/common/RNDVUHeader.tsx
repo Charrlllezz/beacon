@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable, TouchableOpacity } from 'react-native';
-import { Colors, FontSize, Spacing } from '../../config/theme';
+import { Colors, FontSize, Spacing, Fonts } from '../../config/theme';
+import Icon from '../ui/Icon';
 import { useDeviceStore } from '../../store/useDeviceStore';
 
 interface Props {
@@ -33,7 +34,7 @@ export default function RNDVUHeader({ title, subtitle, onLongPress }: Props) {
           accessibilityLabel="Device and connection settings"
         >
           <View style={[styles.statusDot, { backgroundColor: dotColor }]} />
-          <Text style={styles.gearIcon}>⚙️</Text>
+          <Icon name="gearshape" size={20} color={Colors.textSecondary} />
         </TouchableOpacity>
       </View>
     </Pressable>
@@ -45,19 +46,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e1d2a',
+    paddingTop: Spacing.sm,
+    paddingBottom: 4,
     backgroundColor: Colors.background,
     gap: 8,
   },
   title: {
-    fontSize: FontSize.xl,
+    fontFamily: Fonts.rounded,
+    fontSize: FontSize.xxl,
     fontWeight: '800',
     color: Colors.textPrimary,
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
   },
   subtitle: {
+    fontFamily: Fonts.rounded,
     fontSize: FontSize.sm,
     color: Colors.textSecondary,
     fontWeight: '500',
@@ -70,6 +72,5 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingLeft: Spacing.sm,
   },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  gearIcon: { fontSize: 18 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
 });

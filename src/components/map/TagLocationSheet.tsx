@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
 import type { TagCategory, TagScope } from '../../types/festival';
+import Icon from '../ui/Icon';
+import GradientButton from '../ui/GradientButton';
+import { TAG_CATEGORY_ICONS } from './tagCategories';
 
-const CATEGORIES: { key: TagCategory; label: string; icon: string }[] = [
-  { key: 'stage', label: 'Stage', icon: '🎵' },
-  { key: 'food', label: 'Food', icon: '🍔' },
-  { key: 'water', label: 'Water', icon: '💧' },
-  { key: 'restroom', label: 'Restroom', icon: '🚻' },
-  { key: 'camp', label: 'Camp', icon: '⛺' },
-  { key: 'custom', label: 'Other', icon: '📌' },
+const CATEGORIES: { key: TagCategory; label: string }[] = [
+  { key: 'stage', label: 'Stage' },
+  { key: 'food', label: 'Food' },
+  { key: 'water', label: 'Water' },
+  { key: 'restroom', label: 'Restroom' },
+  { key: 'camp', label: 'Camp' },
+  { key: 'custom', label: 'Other' },
 ];
 
 interface Props {
@@ -55,7 +58,7 @@ export default function TagLocationSheet({ coordinate, onSubmit, onCancel }: Pro
             style={[styles.categoryChip, category === cat.key && styles.categoryChipActive]}
             onPress={() => setCategory(cat.key)}
           >
-            <Text style={styles.categoryIcon}>{cat.icon}</Text>
+            <Icon name={TAG_CATEGORY_ICONS[cat.key]} size={14} color={category === cat.key ? Colors.primary : Colors.textSecondary} />
             <Text style={[styles.categoryText, category === cat.key && styles.categoryTextActive]}>
               {cat.label}
             </Text>
@@ -64,16 +67,14 @@ export default function TagLocationSheet({ coordinate, onSubmit, onCancel }: Pro
       </View>
 
       <View style={styles.actions}>
-        <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-          <Text style={styles.cancelText}>Cancel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.submitBtn, !canSubmit && styles.submitBtnDisabled]}
-          onPress={() => canSubmit && onSubmit(name.trim(), category, scope)}
+        <GradientButton style={styles.actionBtn} variant="ghost" label="Cancel" onPress={onCancel} />
+        <GradientButton
+          style={styles.actionBtn}
+          label="Tag & Share"
+          icon="paperplane.fill"
+          onPress={() => { if (canSubmit) onSubmit(name.trim(), category, scope); }}
           disabled={!canSubmit}
-        >
-          <Text style={styles.submitText}>Tag & Share</Text>
-        </TouchableOpacity>
+        />
       </View>
     </View>
   );
@@ -86,8 +87,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: BorderRadius.xl,
     padding: Spacing.lg,
     paddingBottom: 40,
-    borderTopWidth: 1,
-    borderColor: Colors.primary + '33',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
   },
   handle: {
     width: 40,
@@ -98,7 +99,8 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   title: {
-    fontSize: FontSize.lg,
+    fontFamily: Fonts.rounded,
+    fontSize: FontSize.xl,
     fontWeight: '800',
     color: Colors.textPrimary,
     marginBottom: 4,
@@ -106,20 +108,21 @@ const styles = StyleSheet.create({
   coords: {
     fontSize: FontSize.xs,
     color: Colors.coordinate,
-    fontFamily: 'monospace',
+    fontFamily: 'ui-monospace',
     marginBottom: Spacing.md,
   },
   input: {
-    backgroundColor: Colors.surface,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     color: Colors.textPrimary,
     fontSize: FontSize.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
     marginBottom: Spacing.md,
   },
   categoryLabel: {
+    fontFamily: Fonts.rounded,
     fontSize: FontSize.xs,
     fontWeight: '700',
     color: Colors.textSecondary,
@@ -136,20 +139,19 @@ const styles = StyleSheet.create({
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.surface,
+    gap: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: BorderRadius.full,
-    paddingVertical: 6,
+    paddingVertical: 8,
     paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Colors.glassBorder,
   },
   categoryChipActive: {
     borderColor: Colors.primary,
     backgroundColor: Colors.primary + '22',
   },
-  categoryIcon: { fontSize: 14 },
-  categoryText: { fontSize: FontSize.xs, fontWeight: '600', color: Colors.textSecondary },
+  categoryText: { fontFamily: Fonts.rounded, fontSize: FontSize.xs + 1, fontWeight: '700', color: Colors.textSecondary },
   categoryTextActive: { color: Colors.primary },
   scopeRow: {
     gap: 8,
@@ -183,22 +185,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.sm,
   },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  cancelText: { color: Colors.textSecondary, fontSize: FontSize.md, fontWeight: '600' },
-  submitBtn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-  },
-  submitBtnDisabled: { backgroundColor: Colors.textMuted },
-  submitText: { color: '#fff', fontSize: FontSize.md, fontWeight: '700' },
+  actionBtn: { flex: 1 },
 });

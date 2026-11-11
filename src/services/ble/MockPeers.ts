@@ -1,3 +1,4 @@
+import { crewColor } from '../../config/theme';
 import type { MockFirmware } from './MockFirmware';
 import type { NodeInfo } from '../../types/mesh';
 import { PortNum } from '../../types/mesh';
@@ -116,12 +117,12 @@ export class VirtualPeer {
 
 /** The original Coachella 6-peer scene. Default scenario for mock connect. */
 export const COACHELLA_SCENE: VirtualPeerOptions[] = [
-  { nodeId: 0x1a2b3c, longName: 'Alex Rivera',  shortName: 'Alex', lat: 33.6803, lng: -116.2378, battery: 82, snr: 10.5, color: '#e91e63' },
-  { nodeId: 0x2b3c4d, longName: 'Sam Chen',     shortName: 'Sam',  lat: 33.6810, lng: -116.2365, battery: 45, snr:  6.2, color: '#2196f3' },
-  { nodeId: 0x3c4d5e, longName: 'Jordan Park',  shortName: 'Jord', lat: 33.6798, lng: -116.2355, battery: 11, snr: -2.0, color: '#00bcd4' },
-  { nodeId: 0x4d5e6f, longName: 'Mia Santos',   shortName: 'Mia',  lat: 33.6795, lng: -116.2368, battery: 67, snr:  8.0, color: '#8bc34a' },
-  { nodeId: 0x5e6f80, longName: 'Kai Thompson', shortName: 'Kai',  lat: 33.6815, lng: -116.2345, battery: 93, snr: 12.0, color: '#9c27b0' },
-  { nodeId: 0x6f8091, longName: 'Priya Sharma', shortName: 'Priy', lat: 33.6790, lng: -116.2380, battery: 34, snr:  1.5, color: '#ff5252' },
+  { nodeId: 0x1a2b3c, longName: 'Alex Rivera',  shortName: 'Alex', lat: 33.6803, lng: -116.2378, battery: 82, snr: 10.5 },
+  { nodeId: 0x2b3c4d, longName: 'Sam Chen',     shortName: 'Sam',  lat: 33.6810, lng: -116.2365, battery: 45, snr:  6.2 },
+  { nodeId: 0x3c4d5e, longName: 'Jordan Park',  shortName: 'Jord', lat: 33.6798, lng: -116.2355, battery: 11, snr: -2.0 },
+  { nodeId: 0x4d5e6f, longName: 'Mia Santos',   shortName: 'Mia',  lat: 33.6795, lng: -116.2368, battery: 67, snr:  8.0 },
+  { nodeId: 0x5e6f80, longName: 'Kai Thompson', shortName: 'Kai',  lat: 33.6815, lng: -116.2345, battery: 93, snr: 12.0 },
+  { nodeId: 0x6f8091, longName: 'Priya Sharma', shortName: 'Priy', lat: 33.6790, lng: -116.2380, battery: 34, snr:  1.5 },
 ];
 
 /** Scripted inbound messages for the COACHELLA_SCENE (per-peer text timeline). */
@@ -160,6 +161,9 @@ export function startCoachellaScene(firmware: MockFirmware): VirtualPeer[] {
   const peers = COACHELLA_SCENE.map(opts => new VirtualPeer(opts));
 
   for (const peer of peers) {
+    // Each peer announces the colour the app would give them anyway, so a pin
+    // never changes colour when the announcement lands.
+    peer.color = peer.color ?? crewColor(peer.nodeId);
     // Periodic broadcasts: 10-25s random intervals per peer.
     peer.startBroadcasting(firmware, 10000 + Math.random() * 15000);
     // Color intro messages (MF:K) sent ~1s after connect.

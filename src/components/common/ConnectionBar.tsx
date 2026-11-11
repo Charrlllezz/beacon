@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Text, StyleSheet, TouchableOpacity, ActivityIndicator, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useDeviceStore } from '../../store/useDeviceStore';
 import { useCrewStore } from '../../store/useCrewStore';
-import { Colors, FontSize } from '../../config/theme';
-import { summarizeCrew, summaryLine, type SummaryTone } from '../../utils/crewSummary';
+import { Colors, FontSize, Fonts } from '../../config/theme';
+import { summarizeCrew, summaryLine, type CrewSummary, type SummaryTone } from '../../utils/crewSummary';
 import SosBanner from './SosBanner';
 
 const TONE_COLOR: Record<SummaryTone, string> = {
@@ -41,22 +41,39 @@ function CrewStrip() {
     return () => clearInterval(t);
   }, []);
 
-  const { text, tone } = summaryLine(summarizeCrew(Object.values(crewMembers), now), now);
+  const summary = summarizeCrew(Object.values(crewMembers), now);
+  const { text, tone } = summaryLine(summary, now);
   const color = TONE_COLOR[tone];
   const onCrewTab = route.name === 'Crew';
+  const { head, rest } = calmLine(summary, now);
 
   return (
     <TouchableOpacity
-      style={[styles.bar, { backgroundColor: color + '14', borderBottomColor: color + '33' }]}
+      style={styles.calmBar}
       onPress={() => { if (!onCrewTab) (navigation as any).navigate('Crew'); }}
       activeOpacity={onCrewTab ? 1 : 0.7}
       accessibilityRole={onCrewTab ? 'text' : 'button'}
       accessibilityLabel={`Crew status: ${text}`}
     >
-      <Text style={[styles.dot, { color }]}>●</Text>
-      <Text style={[styles.text, { color }]} numberOfLines={1}>{text}</Text>
+      <View style={[styles.glowDot, { backgroundColor: color, shadowColor: color }]} />
+      <Text style={styles.calmText} numberOfLines={1}>
+        <Text style={[styles.calmHead, { color }]}>{head}</Text>
+        {rest ? <Text>{`  ·  ${rest}`}</Text> : null}
+      </Text>
     </TouchableOpacity>
   );
+}
+
+// The strip's short form: how many are in range, then only what needs
+// attention (a quiet crew, a low battery). "Last heard just now" is noise.
+function calmLine(s: CrewSummary, nowSecs: number): { head: string; rest: string } {
+  if (s.total === 0) return { head: 'No crew heard yet', rest: '' };
+  const rest: string[] = [];
+  const quietFor = s.lastHeardSecs === null ? null : nowSecs - s.lastHeardSecs;
+  if (quietFor !== null && quietFor > 120) rest.push(`heard ${Math.round(quietFor / 60)} min ago`);
+  if (s.lowBattery.length === 1) rest.push(`${s.lowBattery[0]}'s battery low`);
+  else if (s.lowBattery.length > 1) rest.push(`${s.lowBattery.length} batteries low`);
+  return { head: `${s.inRange} of ${s.total} in range`, rest: rest.join('  ·  ') };
 }
 
 function LinkProblemBar({ status }: { status: string }) {
@@ -103,9 +120,9 @@ function LinkProblemBar({ status }: { status: string }) {
 const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
-    paddingVertical: 10,
+    paddingVertical: 9,
     paddingHorizontal: 16,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
@@ -113,10 +130,23 @@ const styles = StyleSheet.create({
   spinner: {
     marginRight: 2,
   },
-  dot: { fontSize: 10 },
   text: {
+    fontFamily: Fonts.rounded,
     fontSize: FontSize.xs,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
+  calmBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  glowDot: {
+    width: 7, height: 7, borderRadius: 4,
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 4,
+  },
+  calmText: { flex: 1, fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: '500' },
+  calmHead: { fontFamily: Fonts.rounded, fontWeight: '700' },
 });

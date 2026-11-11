@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
-import { Colors, Spacing, FontSize, BorderRadius } from '../../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, Fonts } from '../../config/theme';
 import type { Message, ReplyKind } from '../../types/messages';
 import { useMessagesStore } from '../../store/useMessagesStore';
 import { useDeviceStore } from '../../store/useDeviceStore';
@@ -76,7 +76,7 @@ export default function ReplyBar({ message, isMine, options, targetPacketId }: P
             return (
               <TouchableOpacity
                 key={kind}
-                style={[styles.btn, { borderColor: color + '66' }, selected && { backgroundColor: color + '33', borderColor: color }]}
+                style={[styles.btn, { borderColor: color + '55' }, selected && { backgroundColor: color + '2e', borderColor: color }]}
                 onPress={() => answer(kind)}
                 disabled={sending !== null}
                 accessibilityRole="button"
@@ -97,13 +97,19 @@ export default function ReplyBar({ message, isMine, options, targetPacketId }: P
 const styles = StyleSheet.create({
   wrap: { marginTop: Spacing.sm, gap: 6 },
   summary: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: '600' },
-  row: { flexDirection: 'row', gap: 6 },
+  // Buttons size to their label (the card is only as wide as its content,
+  // and flex: 1 halves of a narrow card cut off "On my way"), and wrap onto
+  // a second line before they'd overflow.
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   btn: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 0,
     paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: BorderRadius.full,
     borderWidth: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
     alignItems: 'center',
   },
-  btnText: { fontSize: FontSize.xs, fontWeight: '800' },
+  btnText: { fontFamily: Fonts.rounded, fontSize: FontSize.sm, fontWeight: '700' },
 });

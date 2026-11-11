@@ -115,3 +115,42 @@ describe('PacketRouter onMeshMessage', () => {
     off1(); off2();
   });
 });
+
+describe('PacketRouter nodeInfo replay', () => {
+  test("a stored record without battery or name doesn't wipe what we know", () => {
+    const now = Math.floor(Date.now() / 1000);
+    const FRIEND = 0x0badf00d;
+    useCrewStore.getState().upsertMember({
+      nodeId: FRIEND, longName: 'Sam', shortName: 'SAM', lastHeard: now, batteryLevel: 6,
+    });
+    // On reconnect the radio replays its node DB: an older last-heard, no
+    // battery, and (for a peer it never got NodeInfo from) no name.
+    routeFromRadio({ nodeInfo: { num: FRIEND, lastHeard: now - 3000 } } as FromRadio, ME);
+
+    const sam = useCrewStore.getState().crewMembers[FRIEND];
+    expect(sam.batteryLevel).toBe(6);
+    expect(sam.longName).toBe('Sam');
+    expect(sam.shortName).toBe('SAM');
+    expect(sam.lastHeard).toBe(now);
+    expect(sam.isOnline).toBe(true);
+  });
+});
+
+describe('PacketRouter Find me', () => {
+  test("a request for me raises it, never shows in chat, and a live position moves the sender's pin", async () => {
+    const { useFindStore } = await import('../../store/useFindStore');
+    useCrewStore.getState().upsertMember({ nodeId: PEER, longName: 'Maya', shortName: 'MAYA', lastHeard: Math.floor(Date.now() / 1000) });
+    const before = useMessagesStore.getState().messages.length;
+
+    routeFromRadio(textPacket(`MF:F:${ME.toString(16)}`), ME);
+    expect(useFindStore.getState().incoming).toMatchObject({ finder: PEER, finderName: 'Maya' });
+
+    routeFromRadio(textPacket('MF:F:12345678'), ME); // someone else's search
+    routeFromRadio(textPacket('MF:P:34.08661,-117.29170'), ME);
+    expect(useCrewStore.getState().crewMembers[PEER]).toMatchObject({ lat: 34.08661, lng: -117.2917 });
+
+    routeFromRadio(textPacket(`MF:F:${ME.toString(16)}:0`), ME); // called off
+    expect(useFindStore.getState().incoming).toBeNull();
+    expect(useMessagesStore.getState().messages.length).toBe(before);
+  });
+});

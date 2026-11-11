@@ -1,8 +1,13 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DEMO, DEMO_GOING_ENTRIES, DEMO_MY_PICKS } from '../config/demo';
 
 const GOING_KEY = 'rndvu_my_going_picks';
 const ENTRIES_KEY = 'rndvu_going_entries';
+// Which festival the stored picks belong to. Picks are stage + artist ids with
+// no festival in them (nor in MF:G), and Countdown and Beyond Wonderland share
+// a venue and DJs, so a Countdown "Going" would show up ticked at BW.
+const PICKS_FESTIVAL_KEY = 'rndvu_going_festival';
 
 interface GoingEntry {
   nodeId: number;
@@ -28,7 +33,8 @@ interface ScheduleState {
   getGoingForArtist: (stageId: string, artistId: string) => GoingEntry[];
   getMyCrewAtStage: (stageId: string) => GoingEntry[];
   getActivePickForNode: (nodeId: number, nowPlayingLookup: (stageId: string, artistId: string) => boolean) => GoingEntry | null;
-  loadMyGoingPicks: () => Promise<void>;
+  /** Load the stored picks, or start empty if they were for another festival. */
+  loadMyGoingPicks: (festivalId: string) => Promise<void>;
 }
 
 export const useScheduleStore = create<ScheduleState>((set, get) => ({
@@ -88,7 +94,20 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     return entries.find((e) => nowPlayingLookup(e.stageId, e.artistId)) ?? null;
   },
 
-  loadMyGoingPicks: async () => {
+  loadMyGoingPicks: async (festivalId) => {
+    if (DEMO) {
+      set({ myGoingPicks: DEMO_MY_PICKS, goingEntries: DEMO_GOING_ENTRIES });
+      return;
+    }
+    try {
+      const storedFor = await AsyncStorage.getItem(PICKS_FESTIVAL_KEY);
+      if (storedFor !== festivalId) {
+        set({ myGoingPicks: [], goingEntries: [] });
+        await AsyncStorage.multiRemove([GOING_KEY, ENTRIES_KEY]);
+        await AsyncStorage.setItem(PICKS_FESTIVAL_KEY, festivalId);
+        return;
+      }
+    } catch {}
     try {
       const raw = await AsyncStorage.getItem(GOING_KEY);
       if (raw) {

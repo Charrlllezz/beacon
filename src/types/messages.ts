@@ -1,6 +1,6 @@
 import type { TagCategory } from './festival';
 
-export type MessageType = 'text' | 'heading' | 'rally' | 'sos' | 'going' | 'ungoing' | 'color' | 'tag' | 'meetup' | 'reply';
+export type MessageType = 'text' | 'heading' | 'rally' | 'sos' | 'going' | 'ungoing' | 'color' | 'tag' | 'meetup' | 'reply' | 'find' | 'findAnswer' | 'livePos';
 
 export type SendStatus = 'sending' | 'sent' | 'failed';
 
@@ -97,4 +97,27 @@ export interface ReplyMessage extends BaseMessage {
   kind: ReplyKind;
 }
 
-export type Message = TextMessage | HeadingMessage | RallyMessage | SOSMessage | GoingMessage | UngoingMessage | ColorMessage | TagMessage | MeetupMessage | ReplyMessage;
+// Find me. None of these are chat bubbles; PacketRouter handles them.
+// MF:F:<target hex>: "I'm looking for <target>". Only the target acts on it.
+// MF:F:<target hex>:0: the finder gave up or found them; stop helping.
+export interface FindMessage extends BaseMessage {
+  type: 'find';
+  target: number;
+  cancel: boolean;
+}
+
+// MF:A:<finder hex>:<1|0>: the target is helping (1) or has stopped (0).
+export interface FindAnswerMessage extends BaseMessage {
+  type: 'findAnswer';
+  finder: number;
+  helping: boolean;
+}
+
+// MF:P:<lat>,<lng>: a fresh phone-GPS position, sent every 10 s while helping.
+export interface LivePosMessage extends BaseMessage {
+  type: 'livePos';
+  lat: number;
+  lng: number;
+}
+
+export type Message = TextMessage | HeadingMessage | RallyMessage | SOSMessage | GoingMessage | UngoingMessage | ColorMessage | TagMessage | MeetupMessage | ReplyMessage | FindMessage | FindAnswerMessage | LivePosMessage;
