@@ -113,7 +113,7 @@ export default function DebugScreen({ onClose }: Props) {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
           <Text style={styles.closeText}>Done</Text>
