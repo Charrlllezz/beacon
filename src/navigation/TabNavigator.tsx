@@ -7,6 +7,7 @@ import ChatScreen from '../screens/ChatScreen';
 import MapScreen from '../screens/MapScreen';
 import ScheduleScreen from '../screens/ScheduleScreen';
 import CrewScreen from '../screens/CrewScreen';
+import { festivalConfig } from '../services/festival/FestivalConfig';
 
 const Tab = createBottomTabNavigator();
 
@@ -16,6 +17,10 @@ export default function TabNavigator() {
   // hidden under the home indicator on devices like iPhone 16 Pro Max.
   const bottomPad = Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 10;
   const tabBarHeight = Platform.OS === 'ios' ? 56 + bottomPad : 68;
+  // No Lineup tab until the festival's set times are in the config: an empty
+  // tab with dead controls is worse than none. The navigator is keyed on the
+  // festival (App.tsx), so this re-checks when the festival changes.
+  const hasLineup = festivalConfig.getAllStages().some(s => s.schedule.length > 0);
 
   return (
     <Tab.Navigator
@@ -60,7 +65,7 @@ export default function TabNavigator() {
           ),
         }}
       />
-      <Tab.Screen
+      {hasLineup && <Tab.Screen
         name="Lineup"
         component={ScheduleScreen}
         options={{
@@ -69,7 +74,7 @@ export default function TabNavigator() {
             <Text style={{ fontSize: focused ? 24 : 21, opacity: focused ? 1 : 0.45 }}>🎵</Text>
           ),
         }}
-      />
+      />}
     </Tab.Navigator>
   );
 }

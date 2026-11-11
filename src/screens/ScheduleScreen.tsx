@@ -5,6 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
 import { festivalConfig } from '../services/festival/FestivalConfig';
+import { useNow } from '../utils/useNow';
 import { useScheduleStore } from '../store/useScheduleStore';
 import { useDeviceStore } from '../store/useDeviceStore';
 import { useCrewStore } from '../store/useCrewStore';
@@ -142,8 +143,16 @@ export default function ScheduleScreen() {
     }
   }
 
+  // Picks are shared from your radio; check before changing anything, or
+  // Replace removed the old pick and then failed to add the new one.
+  function radioReady(): boolean {
+    if (myNodeNum) return true;
+    Alert.alert('Not Ready', 'Still connecting to your device — try again in a moment.');
+    return false;
+  }
+
   async function handleKeepBoth() {
-    if (!pendingPick) return;
+    if (!pendingPick || !radioReady()) return;
     await commitGoing(pendingPick.stage, pendingPick.slot);
     // Mark the new pick and all its conflicts as "kept both"
     const newKey = `${pendingPick.stage.id}:${pendingPick.slot.artistId}`;
@@ -154,7 +163,7 @@ export default function ScheduleScreen() {
   }
 
   async function handleReplace() {
-    if (!pendingPick) return;
+    if (!pendingPick || !radioReady()) return;
     const myId = myNodeNum ?? 0;
     // Remove all conflicting picks first
     for (const conflict of conflicts) {
@@ -179,7 +188,8 @@ export default function ScheduleScreen() {
   }
 
   const query = searchQuery.toLowerCase().trim();
-  const now = Date.now();
+  // Ticks, so LIVE and finished sets update while you're looking at the tab.
+  const now = useNow();
 
   const filteredStageData = useMemo(() => {
     return stages
@@ -280,7 +290,7 @@ export default function ScheduleScreen() {
         )}
         {filteredStageData.map(({ stage, slots }) => {
 
-          const nowPlaying = festivalConfig.getNowPlaying(stage.id);
+          const nowPlaying = festivalConfig.getNowPlaying(stage.id, new Date(now));
           return (
             <View key={stage.id} style={styles.stageCard}>
               <View style={styles.stageHeader}>
