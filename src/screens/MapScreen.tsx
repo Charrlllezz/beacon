@@ -8,7 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import MapView, { Marker, UrlTile, PROVIDER_DEFAULT } from 'react-native-maps';
 import { getTilePath } from '../services/map/TilePrefetch';
 import { useOfflineMapStore } from '../store/useOfflineMapStore';
-import { Colors, Spacing, FontSize, BorderRadius } from '../config/theme';
+import { Colors, Spacing, FontSize, BorderRadius, CREW_PALETTE, crewColor } from '../config/theme';
 import { useCrewStore } from '../store/useCrewStore';
 import { useTagStore } from '../store/useTagStore';
 import { festivalConfig } from '../services/festival/FestivalConfig';
@@ -44,10 +44,7 @@ const CATEGORY_FILTERS: { key: TagCategory; color: string; label: string }[] = [
   { key: 'custom', color: CATEGORY_COLORS.custom, label: 'Other' },
 ];
 
-export const CREW_COLORS = [
-  '#e91e63', '#2196f3', '#00bcd4', '#8bc34a',
-  '#ff9800', '#9c27b0', '#ffeb3b', '#ff5252',
-] as const;
+export const CREW_COLORS = CREW_PALETTE;
 
 export default function MapScreen() {
   // Active festival (App.tsx remounts the tabs when it changes).
@@ -292,7 +289,7 @@ export default function MapScreen() {
           {/* Crew pins, labelled with how old the position is and faded once
               stale, so a 40-minute-old pin doesn't look live. */}
           {crewWithLocation.map(member => {
-            const bg = member.color ?? Colors.primary;
+            const bg = crewColor(member.nodeId, member.color);
             const initials = member.shortName.slice(0, 2).toUpperCase();
             const age = pinAge(member.locationAt, now);
             return (
