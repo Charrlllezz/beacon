@@ -36,7 +36,7 @@ const WINDOW_TRAIL_MS = 12 * 3600 * 1000;
 const PROMPT_AFTER_MS = 6 * 3600 * 1000;
 const PROMPT_FOR_MS = 14 * 24 * 3600 * 1000;
 
-const AMBIENT: ReadonlySet<Message['type']> = new Set(['color', 'ungoing', 'going', 'tag', 'heading']);
+const AMBIENT: ReadonlySet<Message['type']> = new Set(['color', 'ungoing', 'going', 'tag', 'heading', 'find', 'findAnswer', 'livePos']);
 
 export function festivalWindow(c: FestivalConfig): { start: number; end: number } {
   return {

@@ -26,6 +26,7 @@ import { shouldOfferDebrief, debriefTarget } from '../utils/debrief';
 import { BUNDLED_FESTIVALS } from '../services/festival/festivals';
 import { useNow } from '../utils/useNow';
 import CrewKeyCard from '../components/crew/CrewKeyCard';
+import FindSheet from '../components/crew/FindSheet';
 
 const BATTERY_CRITICAL = 15;
 
@@ -39,12 +40,12 @@ function signalBars(snr?: number): { bars: number; color: string } {
 interface CrewMemberCardProps {
   member: CrewMember;
   myLocation: { lat: number; lng: number } | null;
-  onFindOnMap: (nodeId: number) => void;
+  onFind: (nodeId: number) => void;
   watchingStatus?: string;
   locationCtx?: string;
 }
 
-const CrewMemberCard = memo(({ member, myLocation, onFindOnMap, watchingStatus, locationCtx }: CrewMemberCardProps) => {
+const CrewMemberCard = memo(({ member, myLocation, onFind, watchingStatus, locationCtx }: CrewMemberCardProps) => {
   const online = isOnline(member.lastHeard);
   const dist =
     myLocation && member.lat && member.lng
@@ -54,13 +55,12 @@ const CrewMemberCard = memo(({ member, myLocation, onFindOnMap, watchingStatus, 
   const initials = member.shortName.slice(0, 2).toUpperCase();
   const lowBattery = member.batteryLevel !== undefined && member.batteryLevel <= BATTERY_CRITICAL;
   const signal = signalBars(member.snr);
-  const hasLocation = member.lat !== undefined && member.lng !== undefined;
 
   return (
     <TouchableOpacity
       style={[styles.card, lowBattery && styles.cardLowBattery]}
-      onPress={() => hasLocation && onFindOnMap(member.nodeId)}
-      activeOpacity={hasLocation ? 0.7 : 1}
+      onPress={() => onFind(member.nodeId)}
+      activeOpacity={0.7}
     >
       <View style={[styles.avatar, online && styles.avatarOnline, member.color && { borderColor: member.color }]}>
         <Text style={member.emoji ? styles.avatarEmoji : styles.avatarText}>
@@ -144,6 +144,7 @@ export default function CrewScreen() {
   const [debugVisible, setDebugVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [findNodeId, setFindNodeId] = useState<number | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selfMember = myNodeNum ? crewMembers[myNodeNum] : null;
@@ -159,6 +160,7 @@ export default function CrewScreen() {
   }, [endTripOpen]);
 
   const handleFindOnMap = useCallback((nodeId: number) => {
+    setFindNodeId(null);
     setFocusNode(nodeId);
     (navigation as any).navigate('Map');
   }, [navigation, setFocusNode]);
@@ -403,11 +405,11 @@ export default function CrewScreen() {
       key={member.nodeId}
       member={member}
       myLocation={myLocation}
-      onFindOnMap={handleFindOnMap}
+      onFind={setFindNodeId}
       watchingStatus={watchingStatusMap.get(member.nodeId)}
       locationCtx={locationCtxMap.get(`${member.lat},${member.lng}`)}
     />
-  ), [myLocation, handleFindOnMap, watchingStatusMap, locationCtxMap]);
+  ), [myLocation, watchingStatusMap, locationCtxMap]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -580,11 +582,13 @@ export default function CrewScreen() {
         <DebugScreen onClose={() => setDebugVisible(false)} />
       </Modal>
 
+      <FindSheet nodeId={findNodeId} onClose={() => setFindNodeId(null)} onShowOnMap={handleFindOnMap} />
+
       <FirstOpenTip
         storageKey="rndvu_tip_crew"
         title="Your Crew"
         tips={[
-          { icon: '📍', title: 'Find on Map', description: 'Tap any crew member to jump to their location on the map' },
+          { icon: '🧭', title: 'Find Them', description: 'Tap any crew member for an arrow pointing to them, or see them on the map' },
           { icon: '🔋', title: 'Status Info', description: "See everyone's battery level, signal strength, and distance from you" },
           { icon: '🎨', title: 'Pick Your Color', description: 'Choose a color for your map pin so your crew can spot you easily' },
         ]}

@@ -387,6 +387,36 @@ export function encodeToRadio(to: number, text: string, myNodeNum: number, chann
   return lenField(1, meshPacket);
 }
 
+/**
+ * Ask one crew member's radio for its position now: a POSITION_APP packet
+ * addressed to that radio with Data.want_response set. The radio answers by
+ * itself, so it works with their phone locked or dead. Firmware 2.7.26
+ * answers at most once per 3 minutes (PositionModule::allocReply).
+ *
+ * Never broadcast this: want_response on a broadcast makes every radio in
+ * range answer. It carries our own position, as the Meshtastic apps do: the
+ * receiving radio stores the payload as our position, so an empty one would
+ * record us at 0,0.
+ */
+export function encodePositionRequest(
+  to: number,
+  myNodeNum: number,
+  ourPosition: Position,
+  channelIndex = 0,
+  id?: number,
+): Uint8Array {
+  if (to === 0xffffffff) throw new Error('A position request must go to one radio');
+  const parts: Uint8Array[] = [
+    fixed32Field(1, myNodeNum),
+    fixed32Field(2, to),
+    varField(3, channelIndex),
+    lenField(4, encodeData(PortNum.POSITION_APP, encodePosition(ourPosition), true)),
+    varField(9, MESSAGE_HOP_LIMIT),
+  ];
+  if (id) parts.push(fixed32Field(6, id));
+  return lenField(1, concat(...parts));
+}
+
 export function encodeWantConfig(configId: number): Uint8Array {
   return varField(3, configId);
 }
