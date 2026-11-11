@@ -45,6 +45,7 @@ import { notificationContext } from './src/utils/sos';
 import { loadActiveSos, tickSos, hiddenSos } from './src/services/sos/SosController';
 import { getLocationLabel } from './src/components/chat/MeetupCard';
 import { hapticWarning } from './src/utils/haptics';
+import { DEMO, DEMO_LOCATION } from './src/config/demo';
 
 const DISPLAY_NAME_KEY = 'rndvu_display_name';
 const ONBOARDING_COMPLETE_KEY = 'rndvu_onboarding_complete';
@@ -338,6 +339,10 @@ export default function App() {
   }
 
   async function startPhoneGps() {
+    if (DEMO) {
+      useCrewStore.getState().setMyLocation(DEMO_LOCATION.lat, DEMO_LOCATION.lng, true);
+      return;
+    }
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') return;
 

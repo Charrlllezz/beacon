@@ -14,11 +14,13 @@
 // Required toggle to rebuild (mock vs real is a compile-time selection).
 export const USE_MOCK = false;
 
+import { DEMO } from '../../config/demo';
 import { realBleManager, type PacketCallback, type StatusCallback } from './RealBleManager';
 import { mockBleManager } from './MockBleManager';
 
 // TypeScript will enforce interface parity between the two implementations at
 // this line. If either one diverges, this conditional picks up a type error.
-export const bleService = USE_MOCK ? mockBleManager : realBleManager;
+// The pitch demo build (src/config/demo.ts) also runs on the simulated radio.
+export const bleService = USE_MOCK || DEMO ? mockBleManager : realBleManager;
 
 export type { PacketCallback, StatusCallback };

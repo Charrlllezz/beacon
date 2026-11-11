@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DEMO } from '../config/demo';
 import type { Message, SendStatus } from '../types/messages';
 
 const STORAGE_KEY = 'rndvu_messages';
@@ -91,6 +92,7 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
   },
 
   loadMessages: async () => {
+    if (DEMO) { set({ isLoaded: true }); return; }
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
       // Drop Beacon-era 'calibration' entries older builds persisted; that

@@ -46,6 +46,8 @@ jobs:
           CI: 1
       - name: Build (Release, simulator, JS bundled)
         if: steps.app-cache.outputs.cache-hit != 'true'
+        env:
+          EXPO_PUBLIC_RNDVU_DEMO: '1'  # demo/pitch branch only
         run: |
           set -o pipefail
           xcodebuild -workspace ios/RNDVU.xcworkspace -scheme RNDVU \
