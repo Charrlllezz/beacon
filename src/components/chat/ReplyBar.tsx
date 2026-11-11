@@ -97,10 +97,15 @@ export default function ReplyBar({ message, isMine, options, targetPacketId }: P
 const styles = StyleSheet.create({
   wrap: { marginTop: Spacing.sm, gap: 6 },
   summary: { fontSize: FontSize.xs, color: Colors.textSecondary, fontWeight: '600' },
-  row: { flexDirection: 'row', gap: 6 },
+  // Buttons size to their label (the card is only as wide as its content,
+  // and flex: 1 halves of a narrow card cut off "On my way"), and wrap onto
+  // a second line before they'd overflow.
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   btn: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 0,
     paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: BorderRadius.full,
     borderWidth: 1,
     alignItems: 'center',
